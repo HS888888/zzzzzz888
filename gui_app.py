@@ -2877,7 +2877,8 @@ def _setup_single_instance_server(window: GatewayApp) -> QLocalServer:
 
 
 def main() -> None:
-    if sys.version_info < (3, 11):
+    # Portable PyInstaller build embeds its own Python; skip check when frozen.
+    if not getattr(sys, "frozen", False) and sys.version_info < (3, 11):
         app = QApplication(sys.argv)
         QMessageBox.critical(
             None,
