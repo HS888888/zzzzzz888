@@ -28,8 +28,23 @@ Portable-папка (как production\OPC_UA_Gateway на Windows): бинар�
    Astra Linux/release/opcua-gateway-astra-se18-x86_64.tar.gz
    Astra Linux/release/opcua-gateway-astra-se18-x86_64.tar.gz.sha256
 
-Проверка на целевой Astra
--------------------------
+Автоустановка на целевой Astra (скачать с GitHub)
+-------------------------------------------------
+
+  cd "Astra Linux"
+  chmod +x install-opc-gateway.sh install_runtime_deps.sh
+  sudo ./install-opc-gateway.sh
+
+Или одной командой с GitHub (после первого релиза):
+
+  curl -fsSL "https://raw.githubusercontent.com/HS888888/zzzzzz888/main/Astra%20Linux/install-opc-gateway.sh" -o install-opc-gateway.sh
+  chmod +x install-opc-gateway.sh
+  sudo ./install-opc-gateway.sh
+
+Подробнее: INSTALL.txt
+
+Проверка на целевой Astra (вручную)
+-----------------------------------
 
 1. Сверьте контрольную сумму:
 

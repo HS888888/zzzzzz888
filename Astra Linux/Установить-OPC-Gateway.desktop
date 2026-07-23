@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Установить OPC UA Gateway
+Comment=Установка с GitHub (нужен пароль sudo)
+Exec=bash -c "cd \"$(dirname \"%k\")\" && sed -i 's/\\r$//' install-opc-gateway.sh install_runtime_deps.sh 2>/dev/null; pkexec env DISPLAY=$DISPLAY XAUTHORITY=$XAUTHORITY bash \"$(dirname \"%k\")/install-opc-gateway.sh\""
+Icon=system-software-install
+Terminal=true
+Categories=Utility;

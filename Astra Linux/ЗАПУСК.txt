@@ -1,0 +1,37 @@
+УСТАНОВКА OPC UA Gateway — Astra Linux
+========================================
+
+ОШИБКА execve / No such file or directory
+-----------------------------------------
+Вы запускаете .sh ДВОЙНЫМ ЩЕЛЧКОМ. Так нельзя после Windows-флешки.
+
+ПРАВИЛЬНО — откройте ТЕРМИНАЛ и вставьте одну строку:
+
+  cd ~/Desktop && sed -i 's/\r$//' install-opc-gateway.sh install_runtime_deps.sh && sudo bash install-opc-gateway.sh
+
+Если файлы на флешке:
+
+  cd "/media/power/ИМЯ_ФЛЕШКИ/Astra Linux"
+  sed -i 's/\r$//' install-opc-gateway.sh install_runtime_deps.sh
+  sudo bash install-opc-gateway.sh
+
+Альтернатива (обход CRLF):
+
+  cd ~/Desktop
+  sudo bash install-opc-gateway.sh
+
+(если не помогло — сначала sed, как выше)
+
+Файлы на флешке
+----------------
+  install-opc-gateway.sh      — главный скрипт
+  install_runtime_deps.sh   — библиотеки (вызывается автоматически)
+  install                   — обёртка: sudo bash install
+  ЗАПУСК.txt                — эта инструкция
+  Установить-OPC-Gateway.desktop — ярлык (двойной щелчок, откроет терминал)
+
+На Windows перед копированием на флешку:
+  powershell -ExecutionPolicy Bypass -File prepare-usb.ps1
+
+После установки:
+  cd ~/OPC_UA_Gateway && ./Запуск.sh

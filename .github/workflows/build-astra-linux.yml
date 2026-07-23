@@ -11,6 +11,9 @@ on:
       - 'paper_ops_app.html'
       - '.github/workflows/build-astra-linux.yml'
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-22.04
@@ -49,3 +52,16 @@ jobs:
           path: |
             Astra Linux/release/opcua-gateway-astra-se18-x86_64.tar.gz
             Astra Linux/release/opcua-gateway-astra-se18-x86_64.tar.gz.sha256
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: astra-linux-${{ github.run_number }}
+          name: Astra Linux SE 1.8 x86_64 (build ${{ github.run_number }})
+          body: |
+            Portable OPC UA Gateway for Astra Linux SE 1.8 x86_64.
+            Install on Astra: `sudo ./Astra Linux/install-opc-gateway.sh`
+          files: |
+            Astra Linux/release/opcua-gateway-astra-se18-x86_64.tar.gz
+            Astra Linux/release/opcua-gateway-astra-se18-x86_64.tar.gz.sha256
+          make_latest: true
