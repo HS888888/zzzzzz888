@@ -2365,11 +2365,19 @@ class AppBridge(QObject):
 
     @Slot()
     def startGateway(self) -> None:
-        self._app._start_gateway()
+        try:
+            self._app._start_gateway()
+        except Exception as exc:
+            logger.exception("startGateway failed")
+            self._app._append_log(f"[GUI] Ошибка запуска: {exc}")
 
     @Slot()
     def stopGateway(self) -> None:
-        self._app._stop_gateway()
+        try:
+            self._app._stop_gateway()
+        except Exception as exc:
+            logger.exception("stopGateway failed")
+            self._app._append_log(f"[GUI] Ошибка остановки: {exc}")
 
     @Slot()
     def saveSettings(self) -> None:
@@ -2546,9 +2554,12 @@ class GatewayApp(QMainWindow):
     def _push_ui_state(self) -> None:
         if not self._ui_ready:
             return
-        state = self._build_ui_state()
-        js = "window.applyAppState(" + json.dumps(state, ensure_ascii=False) + ");"
-        self.web_view.page().runJavaScript(js)
+        try:
+            state = self._build_ui_state()
+            js = "window.applyAppState(" + json.dumps(state, ensure_ascii=False) + ");"
+            self.web_view.page().runJavaScript(js)
+        except Exception as exc:
+            logger.debug("UI state push skipped: %s", exc)
 
 
     def _schedule_main(self, fn: Callable[[], None]) -> None:
@@ -2705,12 +2716,12 @@ class GatewayApp(QMainWindow):
             QMessageBox.warning(self, "Шлюз", str(exc))
             self._sync_start_button()
             self._update_status_label()
-            raise
+            return
         except Exception as exc:
             QMessageBox.critical(self, "Ошибка запуска", str(exc))
             self._sync_start_button()
             self._update_status_label()
-            raise
+            return
 
     def _stop_gateway(self) -> None:
         if not self.gateway_service.running and not self.gateway_service.stopping:

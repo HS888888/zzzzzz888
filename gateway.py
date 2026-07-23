@@ -304,10 +304,9 @@ class OpcUaGateway:
 
         try:
             await self.init_local_server()
-            await self.read_remote_servers()
-
             logger.info("Запуск локального OPC UA сервера...")
             async with self.server:
+                await self.read_remote_servers()
                 logger.info("Шлюз работает")
                 await self._stop_event.wait()
         except Exception as exc:
