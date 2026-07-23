@@ -19,7 +19,7 @@ $status = git status --porcelain
 if (-not $status) {
     Write-Host "Nothing to commit." -ForegroundColor Yellow
 } else {
-    git commit -m "Prepare OPC UA Gateway for GitHub Actions Linux build"
+    git -c user.name="HS" -c user.email="hs@local" commit -m "Prepare OPC UA Gateway for GitHub Actions Linux build"
     Write-Host "Committed." -ForegroundColor Green
 }
 
