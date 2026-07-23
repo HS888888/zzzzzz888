@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OPC UA шлюз — инструкция по запуску</title>
+  <style>
+    :root {
+      --bg: #0b0f14;
+      --surface: #161d27;
+      --border: #2a3544;
+      --text: #e8eef4;
+      --text-secondary: #9aa8b8;
+      --text-muted: #6b7a8d;
+      --accent: #4da3ff;
+      --accent-soft: rgba(77, 163, 255, 0.12);
+      --plc: #34d399;
+      --plc-bg: rgba(52, 211, 153, 0.1);
+      --gateway: #fbbf24;
+      --gateway-bg: rgba(251, 191, 36, 0.1);
+      --danger: #f87171;
+      --danger-bg: rgba(248, 113, 113, 0.1);
+      --code-bg: #0d1117;
+      --radius: 12px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      font-size: 16px;
+    }
+    .wrap { max-width: 820px; margin: 0 auto; padding: 2rem 1.25rem 3rem; }
+    header { margin-bottom: 2rem; text-align: center; }
+    header h1 {
+      font-size: 1.75rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+    }
+    header p { color: var(--text-secondary); font-size: 1rem; }
+    nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      justify-content: center;
+      margin-bottom: 2rem;
+    }
+    nav a {
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 0.85rem;
+      padding: 0.3rem 0.65rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--surface);
+    }
+    nav a:hover { color: var(--accent); border-color: var(--accent); }
+    section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem 1.75rem;
+      margin-bottom: 1.25rem;
+    }
+    h2 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin-bottom: 0.75rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    h2 .num {
+      width: 28px; height: 28px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.85rem; font-weight: 700; flex-shrink: 0;
+    }
+    h2.plc .num { background: var(--plc-bg); color: var(--plc); }
+    h2.gateway .num { background: var(--gateway-bg); color: var(--gateway); }
+    h3 {
+      font-size: 1rem;
+      font-weight: 600;
+      margin: 1.25rem 0 0.5rem;
+      color: var(--text);
+    }
+    p { margin-bottom: 0.75rem; color: var(--text-secondary); }
+    strong { color: var(--text); }
+    ul { margin: 0.5rem 0 0.75rem 1.25rem; color: var(--text-secondary); }
+    li { margin-bottom: 0.35rem; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.92rem;
+      margin: 0.75rem 0;
+    }
+    th, td {
+      border: 1px solid var(--border);
+      padding: 0.6rem 0.75rem;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: var(--code-bg);
+      color: var(--accent);
+      font-weight: 600;
+      font-size: 0.82rem;
+      width: 28%;
+    }
+    td { color: var(--text-secondary); }
+    td:first-of-type { color: var(--text); font-weight: 500; }
+    code {
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 0.88em;
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      padding: 0.1rem 0.35rem;
+      border-radius: 4px;
+      color: #c9d1d9;
+    }
+    .note {
+      background: var(--accent-soft);
+      border: 1px solid rgba(77, 163, 255, 0.3);
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      margin: 0.75rem 0;
+      font-size: 0.92rem;
+      color: var(--text-secondary);
+    }
+    .note.warn {
+      background: var(--gateway-bg);
+      border-color: rgba(251, 191, 36, 0.4);
+    }
+    .note.danger {
+      background: var(--danger-bg);
+      border-color: rgba(248, 113, 113, 0.4);
+    }
+    .plc-tag {
+      display: inline-block;
+      background: var(--plc-bg);
+      color: var(--plc);
+      padding: 0.15rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+    footer {
+      text-align: center;
+      padding-top: 1rem;
+      color: var(--text-muted);
+      font-size: 0.82rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>OPC UA шлюз — как запустить</h1>
+      <p>Краткая инструкция: запуск → настройка ПЛК → сохранить → старт</p>
+    </header>
+
+    <nav>
+      <a href="#step1">1. Запуск</a>
+      <a href="#step2">2. ПЛК</a>
+      <a href="#step3">3. Шлюз</a>
+      <a href="#step4">4. Сохранить</a>
+      <a href="#step5">5. Старт</a>
+      <a href="#test">Тест</a>
+      <a href="#ips">Адреса</a>
+    </nav>
+
+    <section id="step1">
+      <h2><span class="num">1</span> Запуск программы</h2>
+      <p>Дважды щёлкните по одному из файлов в папке <code>OPC_UA_Gateway</code>:</p>
+      <ul>
+        <li><strong>run.bat</strong> — если установлен Python 3.11+</li>
+        <li><strong>OPC_UA_Gateway.exe</strong> — если собран EXE (папка <code>dist\</code>)</li>
+      </ul>
+      <p>Откроется окно со <strong>схемой</strong>: три зелёных блока ПЛК → жёлтый блок шлюза → блок клиента заказчика. Настройки меняются <strong>кликом по блоку</strong> на схеме.</p>
+      <div class="note warn">Шлюз должен быть <strong>остановлен</strong>, чтобы менять настройки ПЛК и шлюза. Если запущен — сначала «Остановить».</div>
+    </section>
+
+    <section id="step2">
+      <h2 class="plc"><span class="num">2</span> Настройка ПЛК</h2>
+      <p>Кликните на <strong>зелёный блок ПЛК</strong> на схеме. Заполните поля в диалоге и нажмите <strong>«Применить»</strong> (сохраняет в память, ещё не на диск).</p>
+
+      <h3><span class="plc-tag">ПЛК #1</span> — IP <code>192.168.1.10</code></h3>
+      <table>
+        <thead><tr><th>Поле в окне</th><th>Что вводить</th><th>Зачем</th></tr></thead>
+        <tbody>
+          <tr><td>Имя ПЛК</td><td><code>BHK1_PLC1</code></td><td>Метка для журнала — как называть этот контроллер в логах</td></tr>
+          <tr><td>URL</td><td><code>opc.tcp://192.168.1.10:4840</code></td><td>Адрес OPC UA контроллера ОВЕН в сети объекта</td></tr>
+          <tr><td>NodeId Температура</td><td><code>ns=2;i=1001</code></td><td>Откуда читать температуру на ПЛК. Взять из UaExpert, подключившись к ПЛК</td></tr>
+          <tr><td>Локальное имя</td><td><code>BHK1_PLC1_Temperature</code></td><td>Имя переменной на нашем сервере — клиент увидит его в папке GatewayData на порту :4841</td></tr>
+          <tr><td>NodeId Давление</td><td><code>ns=2;i=1002</code></td><td>Адрес переменной давления на ПЛК (тоже из UaExpert)</td></tr>
+          <tr><td>Локальное имя</td><td><code>BHK1_PLC1_Pressure</code></td><td>Имя давления на сервере шлюза :4841</td></tr>
+        </tbody>
+      </table>
+
+      <h3><span class="plc-tag">ПЛК #2</span> — IP <code>192.168.1.11</code></h3>
+      <p>Те же поля. Меняются имя и IP:</p>
+      <table>
+        <thead><tr><th>Поле</th><th>Пример</th></tr></thead>
+        <tbody>
+          <tr><td>Имя ПЛК</td><td><code>BHK1_PLC2</code></td></tr>
+          <tr><td>URL</td><td><code>opc.tcp://192.168.1.11:4840</code></td></tr>
+          <tr><td>NodeId / локальные имена</td><td><code>BHK1_PLC2_Temperature</code>, <code>BHK1_PLC2_Pressure</code> (NodeId — как на ПЛК)</td></tr>
+        </tbody>
+      </table>
+
+      <h3><span class="plc-tag">ПЛК #3</span> — IP <code>192.168.1.12</code></h3>
+      <table>
+        <thead><tr><th>Поле</th><th>Пример</th></tr></thead>
+        <tbody>
+          <tr><td>Имя ПЛК</td><td><code>BHK1_PLC3</code></td></tr>
+          <tr><td>URL</td><td><code>opc.tcp://192.168.1.12:4840</code></td></tr>
+          <tr><td>NodeId / локальные имена</td><td><code>BHK1_PLC3_Temperature</code>, <code>BHK1_PLC3_Pressure</code></td></tr>
+        </tbody>
+      </table>
+
+      <div class="note">После каждого ПЛК — <strong>«Применить»</strong> в диалоге. NodeId сверяйте через UaExpert на самом контроллере — у разных проектов они могут отличаться.</div>
+    </section>
+
+    <section id="step3">
+      <h2 class="gateway"><span class="num">3</span> Настройка шлюза</h2>
+      <p>Кликните на <strong>жёлтый блок</strong> «Шлюз Windows» (<code>gateway.py</code>) на схеме:</p>
+      <table>
+        <thead><tr><th>Поле в окне</th><th>Что вводить</th><th>Зачем</th></tr></thead>
+        <tbody>
+          <tr><td>Порт 4841</td><td><code>4841</code></td><td>Порт, на котором клиент заказчика подключается к шлюзу (UaExpert, SCADA)</td></tr>
+          <tr><td>URI пространства имён</td><td>Не менять</td><td>Технический идентификатор OPC UA — обычно оставляют по умолчанию</td></tr>
+          <tr><td>Имя папки переменных</td><td><code>GatewayData</code></td><td>Папка в дереве OPC UA — здесь UaExpert найдёт все переменные</td></tr>
+          <tr><td>Интервал опроса</td><td><code>2.0</code></td><td>Как часто (сек) опрашивать все ПЛК</td></tr>
+          <tr><td>Интервал переподключения</td><td><code>5.0</code></td><td>Пауза (сек) перед повторным подключением, если связь с ПЛК оборвалась</td></tr>
+        </tbody>
+      </table>
+      <p>Нажмите <strong>«Применить»</strong>.</p>
+    </section>
+
+    <section id="step4">
+      <h2><span class="num">4</span> Сохранить настройки</h2>
+      <div class="note danger">
+        <strong>Обязательно!</strong> На главном окне нажмите кнопку <strong>«Сохранить»</strong> на панели сверху.
+        Без этого «Запустить шлюз» <strong>не сработает</strong> — настройки останутся только в памяти.
+      </div>
+      <p>«Сохранить» записывает всё в файл <code>settings.json</code> рядом с программой.</p>
+    </section>
+
+    <section id="step5">
+      <h2><span class="num">5</span> Запустить шлюз</h2>
+      <p>Нажмите <strong>«Запустить шлюз»</strong> на панели сверху.</p>
+      <ul>
+        <li><strong style="color:var(--plc)">Зелёные</strong> блоки ПЛК — контроллер доступен, данные читаются</li>
+        <li><strong style="color:var(--gateway)">Жёлтый</strong> шлюз — работает нормально</li>
+        <li><strong style="color:var(--danger)">Красные</strong> блоки — нет связи: проверьте IP, порт 4840, NodeId, сеть</li>
+      </ul>
+      <p>Клиент заказчика подключается к <code>opc.tcp://&lt;IP_этого_ПК&gt;:4841</code>, переменные — в папке <code>GatewayData</code>.</p>
+    </section>
+
+    <section id="test">
+      <h2>Кратко: встроенный тест</h2>
+      <p>Кнопка <strong>«Тест / Эмулятор»</strong> на панели — проверка без реальных ПЛК. Программа сама поднимет три fake-контроллера на localhost, подставит тестовые адреса, сохранит настройки и запустит шлюз. Если всё OK — окно «Тест пройден», блоки на схеме зелёные. Для возврата к объекту снова укажите реальные IP в настройках ПЛК, сохраните и запустите.</p>
+    </section>
+
+    <section id="ips">
+      <h2>Адреса: объект и тест</h2>
+      <table>
+        <thead><tr><th>ПЛК</th><th>На объекте (реальный ОВЕН)</th><th>Тест (localhost)</th></tr></thead>
+        <tbody>
+          <tr><td>#1</td><td><code>opc.tcp://192.168.1.10:4840</code></td><td><code>opc.tcp://127.0.0.1:4840</code></td></tr>
+          <tr><td>#2</td><td><code>opc.tcp://192.168.1.11:4840</code></td><td><code>opc.tcp://127.0.0.1:4842</code></td></tr>
+          <tr><td>#3</td><td><code>opc.tcp://192.168.1.12:4840</code></td><td><code>opc.tcp://127.0.0.1:4844</code></td></tr>
+          <tr><td>Шлюз (клиент)</td><td><code>opc.tcp://&lt;IP_ПК&gt;:4841</code></td><td><code>opc.tcp://127.0.0.1:4841</code></td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <footer>
+      OPC UA Gateway · офлайн-справка · README.md
+    </footer>
+  </div>
+</body>
+</html>

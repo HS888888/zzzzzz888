@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>10 вариантов — диалог настроек ПЛК</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --shell: #1c1917;
+      --panel: #292524;
+      --line: #44403c;
+      --muted: #a8a29e;
+      --text: #fafaf9;
+      --plc: #16a34a;
+      --bg-app: #f6f7f8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      font-family: Inter, "Segoe UI", system-ui, sans-serif;
+      background: var(--shell);
+      color: var(--text);
+      overflow: hidden;
+    }
+    .shell {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      height: 100vh;
+    }
+    .sidebar {
+      background: var(--panel);
+      border-right: 1px solid var(--line);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .sidebar-head {
+      padding: 22px 18px 14px;
+      border-bottom: 1px solid var(--line);
+    }
+    .sidebar-head .kicker {
+      font-size: 10px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: #78716c;
+      margin-bottom: 8px;
+    }
+    .sidebar-head h1 {
+      font-size: 17px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      margin-bottom: 6px;
+    }
+    .sidebar-head p {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+    .design-list { flex: 1; overflow-y: auto; padding: 10px; }
+    .design-item {
+      width: 100%;
+      text-align: left;
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 12px;
+      padding: 11px 12px;
+      margin-bottom: 6px;
+      cursor: pointer;
+      color: #e7e5e4;
+      font-family: inherit;
+      transition: 0.15s ease;
+    }
+    .design-item:hover { background: #44403c; }
+    .design-item.active {
+      background: #fafaf9;
+      color: #1c1917;
+      border-color: #fafaf9;
+    }
+    .design-item .num {
+      font-size: 10px;
+      opacity: 0.55;
+      display: block;
+      margin-bottom: 2px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .design-item .name { font-size: 14px; font-weight: 600; }
+    .design-item .hint { font-size: 11px; opacity: 0.65; margin-top: 3px; line-height: 1.35; }
+    .sidebar-foot {
+      padding: 12px;
+      border-top: 1px solid var(--line);
+    }
+    .sidebar-foot button {
+      width: 100%;
+      padding: 11px;
+      border: none;
+      border-radius: 10px;
+      background: #fafaf9;
+      color: #1c1917;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      margin-bottom: 8px;
+    }
+    .sidebar-foot button.secondary {
+      background: transparent;
+      color: #a8a29e;
+      border: 1px solid #57534e;
+    }
+    .sidebar-foot a {
+      display: block;
+      text-align: center;
+      font-size: 11px;
+      color: #78716c;
+      margin-top: 6px;
+      text-decoration: none;
+    }
+
+    .stage-wrap {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: #0c0a09;
+    }
+    .stage-bar {
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(41,37,36,0.9);
+      flex-shrink: 0;
+    }
+    .stage-bar span { font-size: 13px; color: #a8a29e; }
+    .stage-bar strong { color: #fafaf9; }
+    .stage {
+      flex: 1;
+      overflow: auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 32px;
+      background:
+        radial-gradient(800px 360px at 50% 0%, rgba(250,250,249,0.05), transparent 60%),
+        #0c0a09;
+    }
+
+    /* ——— App backdrop behind modal ——— */
+    .app-backdrop {
+      width: 920px;
+      max-width: 100%;
+      height: 560px;
+      border-radius: 14px;
+      background: var(--bg-app);
+      position: relative;
+      box-shadow: 0 40px 90px rgba(0,0,0,0.5);
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+    .app-backdrop::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: rgba(28, 25, 23, 0.28);
+      pointer-events: none;
+    }
+    .app-backdrop .fake-toolbar {
+      height: 52px;
+      border-bottom: 1px solid #e7e9ec;
+      background: #fff;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 16px;
+    }
+    .fake-btn {
+      padding: 7px 14px;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 600;
+      border: 1px solid #d6d3d1;
+      background: #fff;
+      color: #44403c;
+    }
+    .fake-btn.dark { background: #1c1917; color: #fafaf9; border-color: #1c1917; }
+    .modal-center {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      z-index: 1;
+    }
+
+    /* ——— Shared form ——— */
+    .form-sub {
+      font-size: 11px;
+      color: #78716c;
+      line-height: 1.45;
+      margin-bottom: 14px;
+    }
+    .field { margin-bottom: 10px; }
+    .field label {
+      display: block;
+      font-size: 11px;
+      color: #78716c;
+      margin-bottom: 4px;
+      font-weight: 500;
+    }
+    .field input {
+      width: 100%;
+      border: 1px solid #e7e9ec;
+      border-radius: 8px;
+      padding: 9px 12px;
+      font-size: 12px;
+      font-family: inherit;
+      color: #1c1917;
+      background: #fff;
+    }
+    .section {
+      font-size: 12px;
+      font-weight: 600;
+      margin: 14px 0 8px;
+    }
+    .grid2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 6px;
+    }
+    .actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 18px;
+    }
+    .btn-cancel, .btn-apply {
+      padding: 9px 18px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      min-width: 96px;
+    }
+    .btn-cancel {
+      background: #fff;
+      border: 1px solid #d6d3d1;
+      color: #44403c;
+    }
+    .btn-apply {
+      background: var(--plc);
+      border: none;
+      color: #fff;
+    }
+    .x-btn {
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      font-size: 18px;
+      line-height: 1;
+      opacity: 0.7;
+      padding: 4px 8px;
+      border-radius: 6px;
+    }
+    .x-btn:hover { opacity: 1; background: rgba(0,0,0,0.06); }
+
+    /* ——— Variant shells ——— */
+    .dlg {
+      width: 560px;
+      max-width: 100%;
+      font-size: 12px;
+      color: #1c1917;
+    }
+
+    /* 1 Compact Paper */
+    .v1.dlg {
+      background: #fff;
+      border: 1px solid #d6d3d1;
+      border-radius: 10px;
+      box-shadow: 0 16px 40px rgba(28,25,23,0.18);
+      overflow: hidden;
+    }
+    .v1 .head {
+      height: 34px;
+      background: #1c1917;
+      color: #fafaf9;
+      display: flex;
+      align-items: center;
+      padding: 0 14px 0 18px;
+      font-weight: 600;
+      font-size: 13px;
+    }
+    .v1 .head .x-btn { color: #a8a29e; margin-left: auto; }
+    .v1 .head .x-btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
+    .v1 .body { padding: 20px 22px 22px; }
+
+    /* 2 Float shadow — no dark bar */
+    .v2.dlg {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 24px 64px rgba(28,25,23,0.22), 0 0 0 1px rgba(28,25,23,0.06);
+      overflow: hidden;
+    }
+    .v2 .head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      padding: 18px 18px 0;
+    }
+    .v2 .head h2 { font-size: 16px; font-weight: 600; letter-spacing: -0.02em; }
+    .v2 .body { padding: 8px 22px 22px; }
+
+    /* 3 PLC green header */
+    .v3.dlg {
+      background: #fff;
+      border-radius: 10px;
+      border: 1px solid #bbf7d0;
+      box-shadow: 0 14px 36px rgba(22,163,74,0.15);
+      overflow: hidden;
+    }
+    .v3 .head {
+      height: 34px;
+      background: #16a34a;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      padding: 0 14px 0 18px;
+      font-weight: 600;
+      font-size: 13px;
+    }
+    .v3 .head .x-btn { color: rgba(255,255,255,0.75); margin-left: auto; }
+    .v3 .head .x-btn:hover { background: rgba(255,255,255,0.15); color: #fff; }
+    .v3 .body { padding: 20px 22px 22px; }
+    .v3 .section { color: #16a34a; }
+
+    /* 4 Top line only */
+    .v4.dlg {
+      background: #fff;
+      border: 1px solid #e7e9ec;
+      border-top: 3px solid #1c1917;
+      border-radius: 0 0 10px 10px;
+      box-shadow: 0 12px 32px rgba(28,25,23,0.12);
+    }
+    .v4 .head {
+      display: flex;
+      align-items: center;
+      padding: 16px 18px 0;
+    }
+    .v4 .head h2 { font-size: 15px; font-weight: 600; flex: 1; }
+    .v4 .body { padding: 6px 22px 22px; }
+
+    /* 5 Windows light */
+    .v5.dlg {
+      background: #fff;
+      border: 1px solid #c8c8c8;
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+      overflow: hidden;
+    }
+    .v5 .head {
+      height: 32px;
+      background: linear-gradient(#f9f9f9, #ececec);
+      border-bottom: 1px solid #d4d4d4;
+      display: flex;
+      align-items: center;
+      padding: 0 10px 0 12px;
+      font-size: 12px;
+      color: #444;
+    }
+    .v5 .head .x-btn { margin-left: auto; font-size: 14px; color: #666; }
+    .v5 .body { padding: 18px 20px 20px; }
+
+    /* 6 Inset card */
+    .v6.dlg {
+      background: #eceae7;
+      border-radius: 12px;
+      padding: 10px;
+      box-shadow: 0 14px 40px rgba(28,25,23,0.16);
+    }
+    .v6 .inner {
+      background: #fff;
+      border-radius: 8px;
+      border: 1px solid #d6d3d1;
+      overflow: hidden;
+    }
+    .v6 .head {
+      height: 32px;
+      background: #1c1917;
+      color: #fafaf9;
+      display: flex;
+      align-items: center;
+      padding: 0 14px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .v6 .head .x-btn { color: #a8a29e; margin-left: auto; }
+    .v6 .body { padding: 18px 20px 20px; }
+
+    /* 7 Sharp industrial */
+    .v7.dlg {
+      background: #fff;
+      border: 2px solid #1c1917;
+      border-radius: 2px;
+      box-shadow: 4px 4px 0 #1c1917;
+    }
+    .v7 .head {
+      background: #1c1917;
+      color: #fafaf9;
+      padding: 8px 12px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+    }
+    .v7 .head .x-btn { color: #fafaf9; margin-left: auto; font-size: 14px; }
+    .v7 .body { padding: 16px 18px 18px; }
+    .v7 .field input { border-radius: 2px; }
+    .v7 .btn-cancel, .v7 .btn-apply { border-radius: 2px; }
+
+    /* 8 Left accent stripe */
+    .v8.dlg {
+      background: #fff;
+      border: 1px solid #e7e9ec;
+      border-left: 4px solid #16a34a;
+      border-radius: 10px;
+      box-shadow: 0 14px 36px rgba(28,25,23,0.14);
+      position: relative;
+    }
+    .v8 .head {
+      display: flex;
+      align-items: center;
+      padding: 16px 18px 0;
+    }
+    .v8 .head h2 { font-size: 15px; font-weight: 600; flex: 1; }
+    .v8 .body { padding: 6px 22px 22px; }
+    .v8 .section { color: #16a34a; }
+
+    /* 9 Minimal title inline */
+    .v9.dlg {
+      background: #fff;
+      border: 1px solid #d6d3d1;
+      border-radius: 12px;
+      box-shadow: 0 20px 50px rgba(28,25,23,0.2);
+    }
+    .v9 .head {
+      padding: 14px 16px 0;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    .v9 .head h2 { font-size: 14px; font-weight: 600; flex: 1; }
+    .v9 .head .pill {
+      font-size: 10px;
+      font-weight: 600;
+      color: #16a34a;
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      padding: 3px 8px;
+      border-radius: 999px;
+    }
+    .v9 .body { padding: 10px 20px 20px; }
+
+    /* 10 Soft glass */
+    .v10-wrap {
+      background: rgba(255,255,255,0.72);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.8);
+      border-radius: 14px;
+      box-shadow: 0 20px 60px rgba(28,25,23,0.25);
+      padding: 1px;
+    }
+    .v10.dlg {
+      background: rgba(255,255,255,0.95);
+      border-radius: 13px;
+      overflow: hidden;
+    }
+    .v10 .head {
+      height: 36px;
+      background: rgba(28,25,23,0.92);
+      color: #fafaf9;
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .v10 .head .x-btn { color: #a8a29e; margin-left: auto; }
+    .v10 .body { padding: 20px 22px 22px; }
+
+    .compare-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 28px;
+      width: 100%;
+      max-width: 1200px;
+    }
+    .compare-item h3 {
+      font-size: 12px;
+      color: #a8a29e;
+      margin-bottom: 12px;
+      font-weight: 500;
+    }
+    .compare-item .dlg { width: 100%; transform: scale(0.92); transform-origin: top center; }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="sidebar-head">
+        <div class="kicker">OPC UA Gateway</div>
+        <h1>10 диалогов ПЛК</h1>
+        <p>Выберите стиль окна настроек. Откройте в браузере, сравните и напишите номер в чат.</p>
+      </div>
+      <div class="design-list" id="nav"></div>
+      <div class="sidebar-foot">
+        <button type="button" id="btn-pick">Выбрать вариант <span id="pick-num">1</span></button>
+        <button type="button" class="secondary" id="btn-all">Показать все 10</button>
+        <a href="paper_ops_app.html" target="_blank">Текущий интерфейс →</a>
+      </div>
+    </aside>
+    <main class="stage-wrap">
+      <div class="stage-bar">
+        <span>Просмотр: <strong id="current-label">1. Компакт Paper</strong></span>
+        <span id="current-tag">Тонкая рамка · низкая шапка · без серого кольца</span>
+      </div>
+      <div class="stage" id="stage"></div>
+    </main>
+  </div>
+
+  <script>
+    const DESIGNS = [
+      { id: 1, name: "Компакт Paper", tag: "Тонкая рамка · низкая шапка · без серого кольца" },
+      { id: 2, name: "Float Shadow", tag: "Без тёмной шапки · заголовок в теле · тень" },
+      { id: 3, name: "PLC Green", tag: "Зелёная шапка под цвет ПЛК" },
+      { id: 4, name: "Top Line", tag: "Только линия сверху · минимализм" },
+      { id: 5, name: "Windows Light", tag: "Светлая системная шапка Win" },
+      { id: 6, name: "Inset Card", tag: "Серая подложка · белая карточка внутри" },
+      { id: 7, name: "Industrial", tag: "Острые углы · жёсткая обводка" },
+      { id: 8, name: "Left Stripe", tag: "Зелёная полоска слева · без шапки" },
+      { id: 9, name: "Pill Badge", tag: "Заголовок + бейдж ПЛК · без шапки" },
+      { id: 10, name: "Soft Glass", tag: "Лёгкое стекло · размытие · тёмная шапка" },
+    ];
+
+    const FORM = `
+      <p class="form-sub">URL контроллера, NodeId на ПЛК и локальные имена переменных</p>
+      <div class="field"><label>Имя ПЛК</label><input value="BHK1_PLC1" readonly></div>
+      <div class="field"><label>URL (opc.tcp://…)</label><input value="opc.tcp://127.0.0.1:4840" readonly></div>
+      <div class="section">Температура</div>
+      <div class="grid2">
+        <div class="field"><label>NodeId на ПЛК</label><input value="ns=2;i=1001" readonly></div>
+        <div class="field"><label>Локальное имя</label><input value="BHK1_PLC1_Temperature" readonly></div>
+      </div>
+      <div class="section">Давление</div>
+      <div class="grid2">
+        <div class="field"><label>NodeId на ПЛК</label><input value="ns=2;i=1002" readonly></div>
+        <div class="field"><label>Локальное имя</label><input value="BHK1_PLC1_Pressure" readonly></div>
+      </div>
+      <div class="actions">
+        <button type="button" class="btn-cancel">Отмена</button>
+        <button type="button" class="btn-apply">Применить</button>
+      </div>`;
+
+    function dialogHtml(id) {
+      const title = "ПЛК ОВЕН210 #1";
+      const x = '<button type="button" class="x-btn" aria-label="Закрыть">×</button>';
+      const maps = {
+        1: `<div class="dlg v1"><div class="head"><span>${title}</span>${x}</div><div class="body">${FORM}</div></div>`,
+        2: `<div class="dlg v2"><div class="head"><h2>${title}</h2>${x}</div><div class="body">${FORM}</div></div>`,
+        3: `<div class="dlg v3"><div class="head"><span>${title}</span>${x}</div><div class="body">${FORM}</div></div>`,
+        4: `<div class="dlg v4"><div class="head"><h2>${title}</h2>${x}</div><div class="body">${FORM}</div></div>`,
+        5: `<div class="dlg v5"><div class="head"><span>${title}</span>${x}</div><div class="body">${FORM}</div></div>`,
+        6: `<div class="dlg v6"><div class="inner"><div class="head"><span>${title}</span>${x}</div><div class="body">${FORM}</div></div></div>`,
+        7: `<div class="dlg v7"><div class="head"><span>${title}</span>${x}</div><div class="body">${FORM}</div></div>`,
+        8: `<div class="dlg v8"><div class="head"><h2>${title}</h2>${x}</div><div class="body">${FORM}</div></div>`,
+        9: `<div class="dlg v9"><div class="head"><h2>${title}</h2><span class="pill">ПЛК</span>${x}</div><div class="body">${FORM}</div></div>`,
+        10: `<div class="v10-wrap"><div class="dlg v10"><div class="head"><span>${title}</span>${x}</div><div class="body">${FORM}</div></div></div>`,
+      };
+      return maps[id];
+    }
+
+    function sceneHtml(id) {
+      return `
+        <div class="app-backdrop">
+          <div class="fake-toolbar">
+            <span class="fake-btn dark">Запуск</span>
+            <span class="fake-btn">Стоп</span>
+            <span class="fake-btn">Сохранить</span>
+          </div>
+          <div class="modal-center">${dialogHtml(id)}</div>
+        </div>`;
+    }
+
+    let current = parseInt(localStorage.getItem("opcua_dialog_design") || "1", 10);
+    let showAll = false;
+
+    function renderNav() {
+      document.getElementById("nav").innerHTML = DESIGNS.map(d => `
+        <button type="button" class="design-item${d.id === current ? " active" : ""}" data-id="${d.id}">
+          <span class="num">Вариант ${String(d.id).padStart(2, "0")} / 10</span>
+          <span class="name">${d.name}</span>
+          <div class="hint">${d.tag}</div>
+        </button>`).join("");
+      document.querySelectorAll(".design-item").forEach(btn => {
+        btn.addEventListener("click", () => {
+          current = +btn.dataset.id;
+          showAll = false;
+          document.getElementById("btn-all").textContent = "Показать все 10";
+          render();
+        });
+      });
+      document.getElementById("pick-num").textContent = current;
+    }
+
+    function renderStage() {
+      const stage = document.getElementById("stage");
+      if (showAll) {
+        stage.innerHTML = `<div class="compare-grid">${DESIGNS.map(d =>
+          `<div class="compare-item"><h3>${d.id}. ${d.name}</h3>${dialogHtml(d.id)}</div>`
+        ).join("")}</div>`;
+      } else {
+        const d = DESIGNS.find(x => x.id === current);
+        stage.innerHTML = sceneHtml(current);
+        document.getElementById("current-label").textContent = `${d.id}. ${d.name}`;
+        document.getElementById("current-tag").textContent = d.tag;
+      }
+    }
+
+    function render() {
+      renderNav();
+      renderStage();
+    }
+
+    document.getElementById("btn-pick").addEventListener("click", () => {
+      const d = DESIGNS.find(x => x.id === current);
+      localStorage.setItem("opcua_dialog_design", current);
+      alert(`Выбран вариант ${d.id}: ${d.name}\n\nНапишите в чат:\n«Применить диалог ${d.id}»`);
+    });
+
+    document.getElementById("btn-all").addEventListener("click", () => {
+      showAll = !showAll;
+      document.getElementById("btn-all").textContent = showAll ? "Один вариант" : "Показать все 10";
+      renderStage();
+    });
+
+    render();
+  </script>
+</body>
+</html>

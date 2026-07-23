@@ -1,0 +1,38 @@
+Сборка через GitHub Actions (без WSL и BIOS)
+============================================
+
+1. Создайте репозиторий на https://github.com/new
+   - Имя, например: opc-ua-gateway
+   - Public или Private
+   - БЕЗ README / .gitignore (проект уже есть локально)
+
+2. Откройте PowerShell в папке проекта и выполните:
+
+   cd "C:\Users\HS\Desktop\Роман романтик"
+   git init
+   git add .
+   git commit -m "Initial commit: OPC UA Gateway"
+   git branch -M main
+   git remote add origin https://github.com/ВАШ_ЛОГИН/opc-ua-gateway.git
+   git push -u origin main
+
+   При push GitHub попросит войти (браузер или token).
+
+3. На GitHub откройте вкладку Actions.
+   - Выберите workflow "Build Astra Linux bundle"
+   - Нажмите "Run workflow" (если push не запустил автоматически)
+
+4. Дождитесь зелёной галочки (~15-30 мин).
+
+5. Внизу страницы run → Artifacts → скачайте:
+   - OPC_UA_Gateway-Astra-Linux  (папка)
+   - opcua-gateway-astra-se18-x86_64  (tar.gz + sha256)
+
+6. Распакуйте на Astra Linux и запускайте:
+
+   tar xzf opcua-gateway-astra-se18-x86_64.tar.gz
+   cd OPC_UA_Gateway
+   ./Запуск.sh
+
+Примечание: сборка идёт на Ubuntu 22.04. Для Astra SE 1.8 обычно подходит,
+но финальную проверку лучше сделать на целевой Astra.

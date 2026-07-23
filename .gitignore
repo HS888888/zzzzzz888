@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.log
+build/
+dist/
+production/OPC_UA_Gateway/
+Astra Linux/OPC_UA_Gateway/
+Astra Linux/.build-venv/
+Astra Linux/.source-venv/
+Astra Linux/.pyinstaller-build/
+Astra Linux/.pyinstaller-dist/
+Astra Linux/release/
+Astra Linux/preflight-report.txt
+Astra Linux/setup-wsl.log
+settings.json

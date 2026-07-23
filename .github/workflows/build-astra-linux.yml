@@ -1,0 +1,51 @@
+name: Build Astra Linux bundle
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+    paths:
+      - '**.py'
+      - 'requirements*.txt'
+      - 'Astra Linux/**'
+      - 'paper_ops_app.html'
+      - '.github/workflows/build-astra-linux.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            python3 python3-pip python3-venv python3-dev build-essential \
+            libgl1 libglib2.0-0 libxkbcommon-x11-0 libxcb-cursor0 \
+            libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 \
+            libxcb-shape0 libxcb-xfixes0 libxcb-xinerama0 libxcb-randr0 \
+            libnss3 libasound2 libxdamage1 libxrandr2 libgbm1 libx11-xcb1 \
+            libxcomposite1 libxtst6 libxss1 libfontconfig1 libdbus-1-3 \
+            libegl1 libopengl0
+
+      - name: Build portable folder
+        run: |
+          chmod +x "Astra Linux/build.sh" "Astra Linux/package_release.sh" "Astra Linux/packaging/Запуск.sh"
+          cd "Astra Linux"
+          ./build.sh
+          ./package_release.sh
+
+      - name: Upload portable folder
+        uses: actions/upload-artifact@v4
+        with:
+          name: OPC_UA_Gateway-Astra-Linux
+          path: Astra Linux/OPC_UA_Gateway/
+
+      - name: Upload release archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: opcua-gateway-astra-se18-x86_64
+          path: |
+            Astra Linux/release/opcua-gateway-astra-se18-x86_64.tar.gz
+            Astra Linux/release/opcua-gateway-astra-se18-x86_64.tar.gz.sha256

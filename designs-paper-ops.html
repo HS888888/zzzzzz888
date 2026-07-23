@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Paper Ops — 10 цветовых вариантов</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --shell: #1c1917;
+      --panel: #292524;
+      --line: #44403c;
+      --muted: #a8a29e;
+      --text: #fafaf9;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      font-family: "Instrument Sans", system-ui, sans-serif;
+      background: var(--shell);
+      color: var(--text);
+      overflow: hidden;
+    }
+    .shell {
+      display: grid;
+      grid-template-columns: 300px 1fr;
+      height: 100vh;
+    }
+    .sidebar {
+      background: var(--panel);
+      border-right: 1px solid var(--line);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .sidebar-head {
+      padding: 22px 18px 14px;
+      border-bottom: 1px solid var(--line);
+    }
+    .sidebar-head .kicker {
+      font-size: 10px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: #78716c;
+      margin-bottom: 8px;
+    }
+    .sidebar-head h1 {
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      margin-bottom: 6px;
+    }
+    .sidebar-head p {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+    .design-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px;
+    }
+    .design-item {
+      width: 100%;
+      text-align: left;
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 12px;
+      padding: 11px 12px;
+      margin-bottom: 6px;
+      cursor: pointer;
+      color: #e7e5e4;
+      font-family: inherit;
+      transition: 0.15s ease;
+    }
+    .design-item:hover { background: #44403c; }
+    .design-item.active {
+      background: #fafaf9;
+      color: #1c1917;
+      border-color: #fafaf9;
+    }
+    .design-item .num {
+      font-size: 10px;
+      opacity: 0.55;
+      display: block;
+      margin-bottom: 2px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .design-item .name {
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+    .design-item .hint {
+      font-size: 11px;
+      opacity: 0.65;
+      margin-top: 3px;
+    }
+    .swatches {
+      display: flex;
+      gap: 4px;
+      margin-top: 8px;
+    }
+    .swatches i {
+      width: 14px;
+      height: 14px;
+      border-radius: 4px;
+      border: 1px solid rgba(0,0,0,0.12);
+      display: block;
+    }
+    .design-item.active .swatches i {
+      border-color: rgba(0,0,0,0.2);
+    }
+    .sidebar-foot {
+      padding: 12px;
+      border-top: 1px solid var(--line);
+    }
+    .sidebar-foot button {
+      width: 100%;
+      padding: 11px;
+      border: none;
+      border-radius: 10px;
+      background: #fafaf9;
+      color: #1c1917;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      margin-bottom: 8px;
+    }
+    .sidebar-foot button.secondary {
+      background: transparent;
+      color: #a8a29e;
+      border: 1px solid #57534e;
+    }
+    .sidebar-foot a {
+      display: block;
+      text-align: center;
+      font-size: 11px;
+      color: #78716c;
+      margin-top: 6px;
+      text-decoration: none;
+    }
+
+    .stage-wrap {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background:
+        radial-gradient(900px 400px at 60% -10%, rgba(250,250,249,0.06), transparent 55%),
+        #0c0a09;
+    }
+    .stage-bar {
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(41,37,36,0.85);
+      backdrop-filter: blur(10px);
+      flex-shrink: 0;
+    }
+    .stage-bar span { font-size: 13px; color: #a8a29e; }
+    .stage-bar strong { color: #fafaf9; }
+    .stage {
+      flex: 1;
+      overflow: auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 28px;
+    }
+
+    /* ——— Paper Ops base structure ——— */
+    .app-window {
+      width: 1040px;
+      height: 700px;
+      max-width: 100%;
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 40px 100px rgba(0,0,0,0.45);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      font-family: "Instrument Sans", system-ui, sans-serif;
+    }
+    .titlebar {
+      height: 36px;
+      display: flex;
+      align-items: center;
+      padding: 0 14px;
+      gap: 10px;
+      font-size: 12px;
+      flex-shrink: 0;
+    }
+    .titlebar-dots { display: flex; gap: 6px; }
+    .titlebar-dots i {
+      width: 10px; height: 10px; border-radius: 50%; display: block;
+    }
+    .titlebar-dots i:nth-child(1) { background: #ef4444; }
+    .titlebar-dots i:nth-child(2) { background: #eab308; }
+    .titlebar-dots i:nth-child(3) { background: #22c55e; }
+    .titlebar-title { flex: 1; text-align: center; opacity: 0.75; }
+    .app-body { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+    .toolbar {
+      display: flex; align-items: center; gap: 8px;
+      padding: 12px 16px; flex-shrink: 0; flex-wrap: wrap;
+    }
+    .toolbar .spacer { flex: 1; }
+    .btn {
+      padding: 8px 15px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      border: 1px solid transparent;
+      white-space: nowrap;
+      font-family: inherit;
+    }
+    .diagram-area {
+      flex: 1; overflow: auto; padding: 18px 20px; min-height: 0;
+      margin: 14px; border-radius: 18px;
+    }
+    .diagram-title { font-size: 15px; font-weight: 650; letter-spacing: -0.02em; margin-bottom: 4px; }
+    .diagram-sub { font-size: 12px; margin-bottom: 18px; opacity: 0.6; }
+    .flow { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+    .plc-row { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+    .block {
+      border-radius: 14px;
+      padding: 14px 16px;
+      min-width: 168px;
+      text-align: left;
+      font-size: 11px;
+      line-height: 1.4;
+      border: 1px solid;
+    }
+    .block .top {
+      display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+    }
+    .block .led {
+      width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+    }
+    .block strong { font-size: 12px; font-weight: 650; }
+    .block .addr {
+      font-family: "Geist Mono", Consolas, monospace;
+      font-size: 10px;
+      opacity: 0.7;
+    }
+    .arrow {
+      font-size: 11px;
+      opacity: 0.55;
+      font-family: "Geist Mono", monospace;
+      letter-spacing: 0.04em;
+    }
+    .gw-block {
+      width: 100%; max-width: 600px;
+      border-radius: 14px; overflow: hidden;
+      border: 1px solid;
+    }
+    .gw-strip {
+      padding: 10px 14px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+    }
+    .gw-inner {
+      display: flex; align-items: center; justify-content: center;
+      gap: 14px; font-size: 11px; flex-wrap: wrap;
+      padding: 16px 14px;
+    }
+    .legend {
+      display: flex; gap: 18px; justify-content: center;
+      flex-wrap: wrap; margin-top: 18px; font-size: 11px; opacity: 0.7;
+    }
+    .legend span i {
+      display: inline-block; width: 8px; height: 8px;
+      border-radius: 50%; margin-right: 6px; vertical-align: middle;
+    }
+    .log-bar {
+      display: flex; align-items: center;
+      padding: 10px 16px; font-size: 12px; flex-shrink: 0;
+    }
+    .log-bar .spacer { flex: 1; }
+    .log-panel {
+      height: 88px; padding: 10px 16px;
+      font-family: "Geist Mono", Consolas, monospace;
+      font-size: 10px; line-height: 1.65;
+      overflow: hidden; flex-shrink: 0;
+    }
+
+    /* Shared Paper Ops layout tokens applied via CSS vars per variant */
+    .app-window {
+      --bg: #f7f4ef;
+      --surface: #fffdf9;
+      --border: #e7e5e4;
+      --text: #1c1917;
+      --muted: #78716c;
+      --primary: #1c1917;
+      --primary-text: #fafaf9;
+      --danger: #b91c1c;
+      --danger-bg: #fff;
+      --danger-border: #fecaca;
+      --secondary-bg: #fff;
+      --secondary-text: #44403c;
+      --secondary-border: #d6d3d1;
+      --status: #15803d;
+      --plc-bg: #f0fdf4;
+      --plc-border: #bbf7d0;
+      --plc-led: #16a34a;
+      --gw-bg: #fff7ed;
+      --gw-border: #fed7aa;
+      --gw-strip-bg: #1c1917;
+      --gw-strip-text: #fafaf9;
+      --cust-bg: #eff6ff;
+      --cust-border: #bfdbfe;
+      --cust-led: #2563eb;
+      --log-bg: #f5f5f4;
+      --log-text: #57534e;
+      --titlebar-bg: #f5f1ea;
+      --titlebar-text: #57534e;
+    }
+    .titlebar { background: var(--titlebar-bg); color: var(--titlebar-text); border-bottom: 1px solid var(--border); }
+    .app-body { background: var(--bg); color: var(--text); }
+    .toolbar { background: var(--surface); border-bottom: 1px solid var(--border); }
+    .btn-primary { background: var(--primary); color: var(--primary-text); }
+    .btn-danger { background: var(--danger-bg); color: var(--danger); border-color: var(--danger-border); }
+    .btn-secondary { background: var(--secondary-bg); color: var(--secondary-text); border-color: var(--secondary-border); }
+    .status { color: var(--status); font-weight: 600; }
+    .diagram-area { background: var(--surface); border: 1px solid var(--border); }
+    .diagram-sub { color: var(--muted); opacity: 1; }
+    .block-plc { background: var(--plc-bg); border-color: var(--plc-border); }
+    .block-plc .led { background: var(--plc-led); }
+    .gw-block { background: var(--gw-bg); border-color: var(--gw-border); }
+    .gw-strip { background: var(--gw-strip-bg); color: var(--gw-strip-text); }
+    .block-cust { background: var(--cust-bg); border-color: var(--cust-border); }
+    .block-cust .led { background: var(--cust-led); }
+    .log-bar { background: var(--surface); border-top: 1px solid var(--border); color: var(--muted); }
+    .log-panel { background: var(--log-bg); color: var(--log-text); }
+
+    /* 1 Original Paper Ops */
+    #d1 {
+      --bg:#f7f4ef; --surface:#fffdf9; --border:#e7e5e4; --text:#1c1917; --muted:#78716c;
+      --primary:#1c1917; --primary-text:#fafaf9;
+      --danger:#b91c1c; --danger-bg:#fff; --danger-border:#fecaca;
+      --secondary-bg:#fff; --secondary-text:#44403c; --secondary-border:#d6d3d1;
+      --status:#15803d;
+      --plc-bg:#f0fdf4; --plc-border:#bbf7d0; --plc-led:#16a34a;
+      --gw-bg:#fff7ed; --gw-border:#fed7aa; --gw-strip-bg:#1c1917; --gw-strip-text:#fafaf9;
+      --cust-bg:#eff6ff; --cust-border:#bfdbfe; --cust-led:#2563eb;
+      --log-bg:#f5f5f4; --log-text:#57534e;
+      --titlebar-bg:#f5f1ea; --titlebar-text:#57534e;
+    }
+    /* 2 Ocean Mist */
+    #d2 {
+      --bg:#eef5f8; --surface:#f8fcfd; --border:#d5e4ea; --text:#0f2a33; --muted:#5f7a86;
+      --primary:#0e7490; --primary-text:#f0fdfa;
+      --danger:#be123c; --danger-bg:#fff; --danger-border:#fecdd3;
+      --secondary-bg:#fff; --secondary-text:#164e63; --secondary-border:#bae6fd;
+      --status:#0f766e;
+      --plc-bg:#ecfdf5; --plc-border:#99f6e4; --plc-led:#0d9488;
+      --gw-bg:#ecfeff; --gw-border:#a5f3fc; --gw-strip-bg:#0e7490; --gw-strip-text:#ecfeff;
+      --cust-bg:#eff6ff; --cust-border:#bfdbfe; --cust-led:#2563eb;
+      --log-bg:#e8f4f7; --log-text:#475569;
+      --titlebar-bg:#e4f0f4; --titlebar-text:#334155;
+    }
+    /* 3 Sage Field */
+    #d3 {
+      --bg:#f1f5ee; --surface:#f9fbf7; --border:#d7e2d0; --text:#1a2e1c; --muted:#667a66;
+      --primary:#3f6b4a; --primary-text:#f0fdf4;
+      --danger:#b42318; --danger-bg:#fff; --danger-border:#fecdca;
+      --secondary-bg:#fff; --secondary-text:#344054; --secondary-border:#d0d5dd;
+      --status:#2f6b4f;
+      --plc-bg:#e8f5e9; --plc-border:#a5d6a7; --plc-led:#2e7d32;
+      --gw-bg:#f7fee7; --gw-border:#d9f99d; --gw-strip-bg:#365314; --gw-strip-text:#ecfccb;
+      --cust-bg:#eef2ff; --cust-border:#c7d2fe; --cust-led:#4f46e5;
+      --log-bg:#eef3ea; --log-text:#475467;
+      --titlebar-bg:#e8efe4; --titlebar-text:#3f5a44;
+    }
+    /* 4 Clay Warm */
+    #d4 {
+      --bg:#f8f1eb; --surface:#fffaf6; --border:#ebd9cc; --text:#3b2417; --muted:#8a6a56;
+      --primary:#9a3412; --primary-text:#fff7ed;
+      --danger:#b91c1c; --danger-bg:#fff; --danger-border:#fecaca;
+      --secondary-bg:#fff; --secondary-text:#7c2d12; --secondary-border:#fdba74;
+      --status:#b45309;
+      --plc-bg:#fff7ed; --plc-border:#fed7aa; --plc-led:#ea580c;
+      --gw-bg:#fef3c7; --gw-border:#fde68a; --gw-strip-bg:#9a3412; --gw-strip-text:#ffedd5;
+      --cust-bg:#fdf2f8; --cust-border:#fbcfe8; --cust-led:#db2777;
+      --log-bg:#f3e8df; --log-text:#7c2d12;
+      --titlebar-bg:#f3e7de; --titlebar-text:#7c2d12;
+    }
+    /* 5 Ink Blue */
+    #d5 {
+      --bg:#eef2f7; --surface:#f8fafc; --border:#d4dee8; --text:#0f172a; --muted:#64748b;
+      --primary:#1e3a8a; --primary-text:#eff6ff;
+      --danger:#b91c1c; --danger-bg:#fff; --danger-border:#fecaca;
+      --secondary-bg:#fff; --secondary-text:#1e40af; --secondary-border:#bfdbfe;
+      --status:#1d4ed8;
+      --plc-bg:#eff6ff; --plc-border:#bfdbfe; --plc-led:#2563eb;
+      --gw-bg:#f0f9ff; --gw-border:#bae6fd; --gw-strip-bg:#1e3a8a; --gw-strip-text:#dbeafe;
+      --cust-bg:#f5f3ff; --cust-border:#ddd6fe; --cust-led:#7c3aed;
+      --log-bg:#e8eef6; --log-text:#334155;
+      --titlebar-bg:#e4ebf4; --titlebar-text:#334155;
+    }
+    /* 6 Rose Paper */
+    #d6 {
+      --bg:#f8f0f2; --surface:#fff8fa; --border:#ecd7dd; --text:#4a1528; --muted:#9a6b7a;
+      --primary:#9f1239; --primary-text:#fff1f2;
+      --danger:#be123c; --danger-bg:#fff; --danger-border:#fecdd3;
+      --secondary-bg:#fff; --secondary-text:#9f1239; --secondary-border:#fda4af;
+      --status:#be185d;
+      --plc-bg:#fdf2f8; --plc-border:#fbcfe8; --plc-led:#db2777;
+      --gw-bg:#fff1f2; --gw-border:#fecdd3; --gw-strip-bg:#9f1239; --gw-strip-text:#ffe4e6;
+      --cust-bg:#f5f3ff; --cust-border:#ddd6fe; --cust-led:#7c3aed;
+      --log-bg:#f3e5ea; --log-text:#9f1239;
+      --titlebar-bg:#f2e4e8; --titlebar-text:#9f1239;
+    }
+    /* 7 Graphite Soft */
+    #d7 {
+      --bg:#f1f1f3; --surface:#fafafa; --border:#e0e0e4; --text:#18181b; --muted:#71717a;
+      --primary:#27272a; --primary-text:#fafafa;
+      --danger:#dc2626; --danger-bg:#fff; --danger-border:#fecaca;
+      --secondary-bg:#fff; --secondary-text:#3f3f46; --secondary-border:#d4d4d8;
+      --status:#16a34a;
+      --plc-bg:#f0fdf4; --plc-border:#bbf7d0; --plc-led:#16a34a;
+      --gw-bg:#f4f4f5; --gw-border:#d4d4d8; --gw-strip-bg:#18181b; --gw-strip-text:#fafafa;
+      --cust-bg:#eff6ff; --cust-border:#bfdbfe; --cust-led:#2563eb;
+      --log-bg:#ececee; --log-text:#52525b;
+      --titlebar-bg:#ececef; --titlebar-text:#52525b;
+    }
+    /* 8 Honey Cream */
+    #d8 {
+      --bg:#f8f4e8; --surface:#fffdf5; --border:#e8dfc4; --text:#3f2f12; --muted:#8a7748;
+      --primary:#a16207; --primary-text:#fefce8;
+      --danger:#b91c1c; --danger-bg:#fff; --danger-border:#fecaca;
+      --secondary-bg:#fff; --secondary-text:#854d0e; --secondary-border:#fde68a;
+      --status:#ca8a04;
+      --plc-bg:#fefce8; --plc-border:#fde68a; --plc-led:#ca8a04;
+      --gw-bg:#fffbeb; --gw-border:#fcd34d; --gw-strip-bg:#854d0e; --gw-strip-text:#fef3c7;
+      --cust-bg:#ecfdf5; --cust-border:#a7f3d0; --cust-led:#059669;
+      --log-bg:#f1e9d4; --log-text:#713f12;
+      --titlebar-bg:#f0e8d4; --titlebar-text:#713f12;
+    }
+    /* 9 Violet Fog */
+    #d9 {
+      --bg:#f3f0f8; --surface:#fbf9fe; --border:#ddd5ea; --text:#2e1065; --muted:#7c6a9a;
+      --primary:#6d28d9; --primary-text:#f5f3ff;
+      --danger:#b91c1c; --danger-bg:#fff; --danger-border:#fecaca;
+      --secondary-bg:#fff; --secondary-text:#5b21b6; --secondary-border:#ddd6fe;
+      --status:#7c3aed;
+      --plc-bg:#f5f3ff; --plc-border:#ddd6fe; --plc-led:#7c3aed;
+      --gw-bg:#faf5ff; --gw-border:#e9d5ff; --gw-strip-bg:#5b21b6; --gw-strip-text:#ede9fe;
+      --cust-bg:#eff6ff; --cust-border:#bfdbfe; --cust-led:#2563eb;
+      --log-bg:#ebe5f3; --log-text:#5b21b6;
+      --titlebar-bg:#ebe4f2; --titlebar-text:#5b21b6;
+    }
+    /* 10 Olive Steel */
+    #d10 {
+      --bg:#f0f1ec; --surface:#f9faf6; --border:#d8dbd0; --text:#1f2a1a; --muted:#6b7364;
+      --primary:#3f4a36; --primary-text:#f7fee7;
+      --danger:#b42318; --danger-bg:#fff; --danger-border:#fecdca;
+      --secondary-bg:#fff; --secondary-text:#3f4a36; --secondary-border:#c7cbbd;
+      --status:#4d7c0f;
+      --plc-bg:#f7fee7; --plc-border:#d9f99d; --plc-led:#65a30d;
+      --gw-bg:#f4f5f0; --gw-border:#d1d5c8; --gw-strip-bg:#3f4a36; --gw-strip-text:#ecfccb;
+      --cust-bg:#eef6f7; --cust-border:#b6d7db; --cust-led:#0e7490;
+      --log-bg:#e8e9e3; --log-text:#3f4a36;
+      --titlebar-bg:#e6e7e1; --titlebar-text:#3f4a36;
+    }
+
+    @media (max-width: 960px) {
+      .shell { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+      .sidebar { max-height: 240px; }
+      .design-list { display: flex; overflow-x: auto; gap: 6px; }
+      .design-item { min-width: 180px; margin: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="sidebar-head">
+        <div class="kicker">Paper Ops · Color Lab</div>
+        <h1>10 цветовых вариантов</h1>
+        <p>Один стиль Paper Ops — разные палитры. Выберите цвет и применим в программе.</p>
+      </div>
+      <nav class="design-list" id="nav"></nav>
+      <div class="sidebar-foot">
+        <button id="btn-pick">Выбрать этот цвет</button>
+        <button class="secondary" id="btn-all">Показать все</button>
+        <a href="designs-2026.html">← Все стили 2026</a>
+      </div>
+    </aside>
+
+    <main class="stage-wrap">
+      <div class="stage-bar">
+        <span>Сейчас: <strong id="current-label">1. Original</strong></span>
+        <span id="current-tag">Классический Paper Ops</span>
+      </div>
+      <div class="stage" id="stage"></div>
+    </main>
+  </div>
+
+  <script>
+    const DESIGNS = [
+      { id:1, name:"Original", tag:"Классический Paper Ops",
+        colors:["#1c1917","#16a34a","#2563eb","#f7f4ef"],
+        legend:["#16a34a","#1c1917","#2563eb"] },
+      { id:2, name:"Ocean Mist", tag:"Бирюза · холодный paper",
+        colors:["#0e7490","#0d9488","#2563eb","#eef5f8"],
+        legend:["#0d9488","#0e7490","#2563eb"] },
+      { id:3, name:"Sage Field", tag:"Шалфей · зелёный industrial",
+        colors:["#3f6b4a","#2e7d32","#4f46e5","#f1f5ee"],
+        legend:["#2e7d32","#365314","#4f46e5"] },
+      { id:4, name:"Clay Warm", tag:"Глина · тёплый терракот",
+        colors:["#9a3412","#ea580c","#db2777","#f8f1eb"],
+        legend:["#ea580c","#9a3412","#db2777"] },
+      { id:5, name:"Ink Blue", tag:"Чернильный синий",
+        colors:["#1e3a8a","#2563eb","#7c3aed","#eef2f7"],
+        legend:["#2563eb","#1e3a8a","#7c3aed"] },
+      { id:6, name:"Rose Paper", tag:"Розовый paper · soft rose",
+        colors:["#9f1239","#db2777","#7c3aed","#f8f0f2"],
+        legend:["#db2777","#9f1239","#7c3aed"] },
+      { id:7, name:"Graphite Soft", tag:"Мягкий графит · нейтраль",
+        colors:["#27272a","#16a34a","#2563eb","#f1f1f3"],
+        legend:["#16a34a","#18181b","#2563eb"] },
+      { id:8, name:"Honey Cream", tag:"Мёд · кремовый жёлтый",
+        colors:["#a16207","#ca8a04","#059669","#f8f4e8"],
+        legend:["#ca8a04","#854d0e","#059669"] },
+      { id:9, name:"Violet Fog", tag:"Фиолетовый туман",
+        colors:["#6d28d9","#7c3aed","#2563eb","#f3f0f8"],
+        legend:["#7c3aed","#5b21b6","#2563eb"] },
+      { id:10, name:"Olive Steel", tag:"Олива · стальной акцент",
+        colors:["#3f4a36","#65a30d","#0e7490","#f0f1ec"],
+        legend:["#65a30d","#3f4a36","#0e7490"] }
+    ];
+
+    const TEXTS = {
+      title: "OPC UA Gateway",
+      start: "Run", stop: "Stop", save: "Save",
+      test: "Emulator", stopTest: "End test",
+      status: "● Ready",
+      log: "▾ Event log"
+    };
+
+    let current = parseInt(localStorage.getItem("opcua_paper_ops_color") || "1", 10);
+    let showAll = false;
+
+    function appHtml(d) {
+      const t = TEXTS;
+      const leg = d.legend;
+      return `
+      <div class="app-window" id="d${d.id}">
+        <div class="titlebar">
+          <div class="titlebar-dots"><i></i><i></i><i></i></div>
+          <div class="titlebar-title">${t.title}</div>
+          <div style="width:46px"></div>
+        </div>
+        <div class="app-body">
+          <div class="toolbar">
+            <button class="btn btn-primary">${t.start}</button>
+            <button class="btn btn-danger">${t.stop}</button>
+            <button class="btn btn-secondary">${t.save}</button>
+            <button class="btn btn-secondary">${t.test}</button>
+            <button class="btn btn-danger">${t.stopTest}</button>
+            <span class="spacer"></span>
+            <span class="status">${t.status}</span>
+          </div>
+          <div class="diagram-area">
+            <div class="diagram-title">Схема OPC UA шлюза</div>
+            <div class="diagram-sub">Нажмите на блок для настройки · зелёный — работает · красный — ошибка</div>
+            <div class="flow">
+              <div class="plc-row">
+                <div class="block block-plc"><div class="top"><span class="led"></span><strong>ПЛК ОВЕН210 #1</strong></div><span class="addr">127.0.0.1:4840</span></div>
+                <div class="block block-plc"><div class="top"><span class="led"></span><strong>ПЛК ОВЕН210 #2</strong></div><span class="addr">127.0.0.1:4842</span></div>
+                <div class="block block-plc"><div class="top"><span class="led"></span><strong>ПЛК ОВЕН210 #3</strong></div><span class="addr">127.0.0.1:4844</span></div>
+              </div>
+              <div class="arrow">↓  OPC UA</div>
+              <div class="gw-block">
+                <div class="gw-strip">ШЛЮЗ WINDOWS · gateway.py</div>
+                <div class="gw-inner">
+                  <span>OPC UA клиент</span><span>→</span>
+                  <span><strong>ОПРОС · КЭШ · ЛОГИ</strong></span><span>→</span>
+                  <span>сервер :4841</span>
+                </div>
+              </div>
+              <div class="arrow">↓  :4841</div>
+              <div class="block block-cust"><div class="top"><span class="led"></span><strong>Клиент заказчика</strong></div><span class="addr">UaExpert · SCADA · MES</span></div>
+              <div class="legend">
+                <span><i style="background:${leg[0]}"></i>ПЛК</span>
+                <span><i style="background:${leg[1]}"></i>Шлюз</span>
+                <span><i style="background:${leg[2]}"></i>Клиент</span>
+              </div>
+            </div>
+          </div>
+          <div class="log-bar"><span>${t.log}</span><span class="spacer"></span><span style="opacity:.55;font-size:11px">Clear</span></div>
+          <div class="log-panel">[GUI] settings.json loaded<br>[GUI] Save before start<br>2026-07-21 17:45 [INFO] local OPC UA endpoint ready</div>
+        </div>
+      </div>`;
+    }
+
+    function renderNav() {
+      document.getElementById("nav").innerHTML = DESIGNS.map(d => `
+        <button class="design-item${d.id===current?" active":""}" data-id="${d.id}">
+          <span class="num">Color ${String(d.id).padStart(2,"0")} / 10</span>
+          <span class="name">${d.name}</span>
+          <div class="hint">${d.tag}</div>
+          <div class="swatches">${d.colors.map(c => `<i style="background:${c}"></i>`).join("")}</div>
+        </button>`).join("");
+      document.querySelectorAll(".design-item").forEach(btn => {
+        btn.addEventListener("click", () => {
+          current = +btn.dataset.id;
+          showAll = false;
+          document.getElementById("btn-all").textContent = "Показать все";
+          render();
+        });
+      });
+    }
+
+    function renderStage() {
+      const stage = document.getElementById("stage");
+      if (showAll) {
+        stage.style.flexDirection = "column";
+        stage.style.gap = "40px";
+        stage.innerHTML = DESIGNS.map(d =>
+          `<div style="width:100%;text-align:center;color:#a8a29e;font-size:13px">${d.id}. ${d.name} — ${d.tag}</div>` + appHtml(d)
+        ).join("");
+      } else {
+        stage.style.flexDirection = "";
+        stage.style.gap = "";
+        const d = DESIGNS.find(x => x.id === current);
+        stage.innerHTML = appHtml(d);
+        document.getElementById("current-label").textContent = `${d.id}. ${d.name}`;
+        document.getElementById("current-tag").textContent = d.tag;
+      }
+    }
+
+    function render() {
+      renderNav();
+      renderStage();
+    }
+
+    document.getElementById("btn-pick").addEventListener("click", () => {
+      const d = DESIGNS.find(x => x.id === current);
+      localStorage.setItem("opcua_paper_ops_color", current);
+      alert(`Выбран Paper Ops · ${d.name}\n\nНапишите в чат: «Применить Paper Ops ${d.id}»`);
+    });
+
+    document.getElementById("btn-all").addEventListener("click", () => {
+      showAll = !showAll;
+      document.getElementById("btn-all").textContent = showAll ? "Один вариант" : "Показать все";
+      renderStage();
+    });
+
+    render();
+  </script>
+</body>
+</html>

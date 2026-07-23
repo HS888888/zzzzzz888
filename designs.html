@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OPC UA шлюз — 10 полных дизайнов программы</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      overflow: hidden;
+    }
+
+    /* ——— Shell: picker UI ——— */
+    .shell {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      height: 100vh;
+    }
+    .sidebar {
+      background: #1e293b;
+      border-right: 1px solid #334155;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .sidebar-head {
+      padding: 20px 16px 12px;
+      border-bottom: 1px solid #334155;
+    }
+    .sidebar-head h1 { font-size: 15px; margin-bottom: 4px; }
+    .sidebar-head p { font-size: 11px; color: #94a3b8; line-height: 1.4; }
+    .design-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px;
+    }
+    .design-item {
+      display: block;
+      width: 100%;
+      text-align: left;
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-bottom: 4px;
+      cursor: pointer;
+      color: #cbd5e1;
+      font-family: inherit;
+      transition: .15s;
+    }
+    .design-item:hover { background: #334155; }
+    .design-item.active {
+      background: #2563eb;
+      border-color: #3b82f6;
+      color: #fff;
+    }
+    .design-item .num {
+      font-size: 10px;
+      opacity: .7;
+      display: block;
+    }
+    .design-item .name { font-size: 13px; font-weight: 600; }
+    .sidebar-foot {
+      padding: 12px;
+      border-top: 1px solid #334155;
+    }
+    .sidebar-foot button {
+      width: 100%;
+      padding: 10px;
+      border: none;
+      border-radius: 6px;
+      background: #22c55e;
+      color: #fff;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      margin-bottom: 6px;
+    }
+    .sidebar-foot button.secondary {
+      background: #334155;
+      color: #cbd5e1;
+    }
+    .sidebar-foot a {
+      display: block;
+      text-align: center;
+      font-size: 11px;
+      color: #64748b;
+      margin-top: 8px;
+    }
+
+    .stage-wrap {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: #020617;
+    }
+    .stage-bar {
+      padding: 10px 16px;
+      background: #1e293b;
+      border-bottom: 1px solid #334155;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+    .stage-bar span { font-size: 13px; color: #94a3b8; }
+    .stage-bar strong { color: #f8fafc; }
+    .stage {
+      flex: 1;
+      overflow: auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    /* ——— App frame (simulated desktop window) ——— */
+    .app-window {
+      width: 1024px;
+      height: 720px;
+      max-width: 100%;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 25px 80px rgba(0,0,0,.5);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+    }
+    .titlebar {
+      height: 32px;
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      gap: 8px;
+      font-size: 12px;
+      flex-shrink: 0;
+    }
+    .titlebar-dots { display: flex; gap: 6px; }
+    .titlebar-dots i {
+      width: 10px; height: 10px; border-radius: 50%; display: block;
+    }
+    .titlebar-title { flex: 1; text-align: center; opacity: .85; }
+    .app-body { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+
+    /* shared mock parts */
+    .toolbar { display: flex; align-items: center; gap: 8px; padding: 10px 14px; flex-shrink: 0; flex-wrap: wrap; }
+    .toolbar .spacer { flex: 1; }
+    .btn {
+      padding: 8px 16px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+      border: 1px solid transparent;
+      cursor: default;
+      white-space: nowrap;
+    }
+    .diagram-area { flex: 1; overflow: auto; padding: 16px; min-height: 0; }
+    .diagram-title { font-size: 13px; font-weight: 700; margin-bottom: 4px; }
+    .diagram-sub { font-size: 11px; margin-bottom: 16px; opacity: .65; }
+    .flow { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+    .plc-row { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+    .block {
+      border-radius: 6px;
+      padding: 12px 16px;
+      min-width: 160px;
+      text-align: center;
+      font-size: 11px;
+      line-height: 1.4;
+      border: 1px solid;
+      position: relative;
+    }
+    .block .led {
+      width: 8px; height: 8px; border-radius: 50%;
+      display: inline-block; margin-right: 6px;
+    }
+    .block strong { display: block; font-size: 12px; margin-bottom: 4px; }
+    .block .addr { font-family: Consolas, monospace; font-size: 10px; opacity: .8; }
+    .arrow { font-size: 11px; opacity: .6; }
+    .gw-block {
+      width: 100%; max-width: 580px;
+      border-radius: 8px; padding: 14px;
+      text-align: center; border: 2px dashed;
+    }
+    .gw-strip {
+      margin: -14px -14px 12px;
+      padding: 8px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .03em;
+    }
+    .gw-inner {
+      display: flex; align-items: center; justify-content: center;
+      gap: 12px; font-size: 10px; flex-wrap: wrap;
+    }
+    .legend {
+      display: flex; gap: 20px; justify-content: center;
+      flex-wrap: wrap; margin-top: 20px; font-size: 10px; opacity: .7;
+    }
+    .legend span i {
+      display: inline-block; width: 8px; height: 8px;
+      border-radius: 50%; margin-right: 5px; vertical-align: middle;
+    }
+    .log-bar {
+      display: flex; align-items: center;
+      padding: 8px 14px; font-size: 12px; flex-shrink: 0;
+    }
+    .log-bar .spacer { flex: 1; }
+    .log-panel {
+      height: 90px; padding: 10px 14px;
+      font-family: Consolas, monospace; font-size: 10px;
+      line-height: 1.6; overflow: hidden; flex-shrink: 0;
+    }
+
+    /* ═══════════════════════════════════════
+       DESIGN 1 — Промышленный офис (текущий)
+       ═══════════════════════════════════════ */
+    #d1 .titlebar { background: #c8d0d8; color: #1e293b; }
+    #d1 .titlebar-dots i:nth-child(1) { background: #ef4444; }
+    #d1 .titlebar-dots i:nth-child(2) { background: #eab308; }
+    #d1 .titlebar-dots i:nth-child(3) { background: #22c55e; }
+    #d1 .app-body { background: #dde3ea; }
+    #d1 .toolbar { background: #fff; border-bottom: 1px solid #b8c4d0; }
+    #d1 .btn-primary { background: #2563eb; color: #fff; }
+    #d1 .btn-danger { background: #dc2626; color: #fff; }
+    #d1 .btn-secondary { background: #fff; color: #1e293b; border-color: #b8c4d0; }
+    #d1 .status { color: #15803d; font-size: 12px; font-weight: 600; }
+    #d1 .diagram-area { background: #fff; margin: 0 12px 12px; border: 1px solid #b8c4d0; border-radius: 6px; }
+    #d1 .block-plc { background: #f0fdf4; border-color: #86efac; color: #1e293b; }
+    #d1 .block-plc .led { background: #15803d; }
+    #d1 .gw-block { background: #fffbeb; border-color: #fcd34d; color: #1e293b; }
+    #d1 .gw-strip { background: #b45309; color: #fff; border-radius: 6px 6px 0 0; }
+    #d1 .block-cust { background: #f0f9ff; border-color: #7dd3fc; color: #1e293b; }
+    #d1 .block-cust .led { background: #0369a1; }
+    #d1 .log-bar { background: #fff; border-top: 1px solid #b8c4d0; color: #64748b; }
+    #d1 .log-panel { background: #fafbfc; border-top: 1px solid #dde3ea; color: #475569; }
+
+    /* DESIGN 2 — Siemens WinCC */
+    #d2 .titlebar { background: #4a5568; color: #e2e8f0; }
+    #d2 .titlebar-dots i { background: #718096; }
+    #d2 .app-body { background: #a0aec0; }
+    #d2 .toolbar { background: linear-gradient(180deg,#e2e8f0,#cbd5e0); border-bottom: 2px solid #718096; box-shadow: inset 0 1px 0 #fff; }
+    #d2 .btn-primary { background: linear-gradient(180deg,#3182ce,#2b6cb0); color: #fff; border: 1px solid #2c5282; box-shadow: inset 0 1px 0 rgba(255,255,255,.3); }
+    #d2 .btn-danger { background: linear-gradient(180deg,#e53e3e,#c53030); color: #fff; border: 1px solid #9b2c2c; }
+    #d2 .btn-secondary { background: linear-gradient(180deg,#edf2f7,#e2e8f0); color: #2d3748; border: 1px solid #a0aec0; }
+    #d2 .status { color: #276749; font-weight: 700; font-size: 12px; }
+    #d2 .diagram-area { background: #cbd5e0; border: 2px inset #718096; margin: 8px; }
+    #d2 .diagram-title { color: #1a202c; }
+    #d2 .diagram-sub { color: #4a5568; }
+    #d2 .block-plc { background: #c6f6d5; border: 2px outset #68d391; color: #1a202c; border-radius: 2px; }
+    #d2 .block-plc .led { background: #276749; }
+    #d2 .gw-block { background: #fefcbf; border: 2px inset #d69e2e; border-radius: 2px; color: #1a202c; }
+    #d2 .gw-strip { background: #d69e2e; color: #1a202c; }
+    #d2 .block-cust { background: #bee3f8; border: 2px outset #4299e1; color: #1a202c; border-radius: 2px; }
+    #d2 .block-cust .led { background: #2b6cb0; }
+    #d2 .log-bar { background: #e2e8f0; border-top: 2px solid #718096; color: #4a5568; }
+    #d2 .log-panel { background: #1a202c; color: #68d391; border-top: 2px inset #718096; }
+
+    /* DESIGN 3 — Тёмная SCADA */
+    #d3 .titlebar { background: #0b0f14; color: #6b7a8d; border-bottom: 1px solid #2a3544; }
+    #d3 .titlebar-dots i { background: #2a3544; }
+    #d3 .app-body { background: #0b0f14; }
+    #d3 .toolbar { background: #161d27; border-bottom: 1px solid #2a3544; }
+    #d3 .btn-primary { background: #4da3ff; color: #0b0f14; }
+    #d3 .btn-danger { background: #f87171; color: #0b0f14; }
+    #d3 .btn-secondary { background: #121820; color: #e8eef4; border-color: #2a3544; }
+    #d3 .status { color: #34d399; font-size: 12px; }
+    #d3 .diagram-area { background: #0d1117; border: 1px solid #2a3544; margin: 12px; border-radius: 8px; }
+    #d3 .diagram-title { color: #e8eef4; }
+    #d3 .diagram-sub { color: #6b7a8d; }
+    #d3 .block-plc { background: #1a2e28; border-color: #34d399; color: #e8eef4; }
+    #d3 .block-plc .led { background: #34d399; box-shadow: 0 0 8px #34d399; }
+    #d3 .gw-block { background: #2e2818; border-color: #fbbf24; color: #e8eef4; }
+    #d3 .gw-strip { background: #fbbf24; color: #0b0f14; }
+    #d3 .block-cust { background: #252033; border-color: #a78bfa; color: #e8eef4; }
+    #d3 .block-cust .led { background: #a78bfa; box-shadow: 0 0 8px #a78bfa; }
+    #d3 .log-bar { background: #161d27; border-top: 1px solid #2a3544; color: #9aa8b8; }
+    #d3 .log-panel { background: #0d1117; color: #6b7a8d; border-top: 1px solid #2a3544; }
+
+    /* DESIGN 4 — ОВЕН Industrial */
+    #d4 .titlebar { background: #e85d04; color: #fff; font-weight: 600; }
+    #d4 .titlebar-dots i { background: rgba(255,255,255,.4); }
+    #d4 .app-body { background: #f0f0f0; }
+    #d4 .toolbar { background: #fff; border-bottom: 3px solid #e85d04; }
+    #d4 .btn-primary { background: #e85d04; color: #fff; border-radius: 2px; }
+    #d4 .btn-danger { background: #c62828; color: #fff; border-radius: 2px; }
+    #d4 .btn-secondary { background: #eee; color: #333; border-color: #ccc; border-radius: 2px; }
+    #d4 .status { color: #2d6a4f; font-weight: 700; }
+    #d4 .diagram-area { background: #fff; margin: 10px; border: 1px solid #ccc; }
+    #d4 .block-plc { background: #e8f5e9; border-color: #2d6a4f; border-left: 4px solid #2d6a4f; color: #333; border-radius: 0; }
+    #d4 .block-plc .led { background: #2d6a4f; }
+    #d4 .gw-block { background: #fff3e0; border-color: #e85d04; border-style: solid; border-width: 2px; color: #333; }
+    #d4 .gw-strip { background: #e85d04; color: #fff; }
+    #d4 .block-cust { background: #e3f2fd; border-color: #1565c0; border-left: 4px solid #1565c0; color: #333; border-radius: 0; }
+    #d4 .block-cust .led { background: #1565c0; }
+    #d4 .log-bar { background: #fafafa; border-top: 1px solid #ddd; color: #666; }
+    #d4 .log-panel { background: #fff; color: #555; border-top: 1px solid #eee; }
+
+    /* DESIGN 5 — Минимализм */
+    #d5 .titlebar { background: #fff; color: #171717; border-bottom: 1px solid #e5e5e5; }
+    #d5 .titlebar-dots i { background: #e5e5e5; }
+    #d5 .app-body { background: #fafafa; }
+    #d5 .toolbar { background: #fff; border-bottom: 1px solid #e5e5e5; padding: 14px 20px; }
+    #d5 .btn { border-radius: 0; font-weight: 500; letter-spacing: .02em; }
+    #d5 .btn-primary { background: #171717; color: #fff; }
+    #d5 .btn-danger { background: #fff; color: #171717; border: 1px solid #171717; }
+    #d5 .btn-secondary { background: #fff; color: #525252; border-color: #e5e5e5; }
+    #d5 .status { color: #525252; font-size: 11px; letter-spacing: .05em; text-transform: uppercase; }
+    #d5 .diagram-area { padding: 32px 24px; }
+    #d5 .diagram-title { font-weight: 500; letter-spacing: .08em; text-transform: uppercase; font-size: 11px; }
+    #d5 .block { border-radius: 0; border-width: 1px; min-width: 140px; padding: 16px; }
+    #d5 .block-plc { background: #fff; border-color: #e5e5e5; color: #171717; }
+    #d5 .block-plc .led { display: none; }
+    #d5 .gw-block { border-style: solid; border-color: #171717; background: #fff; border-radius: 0; }
+    #d5 .gw-strip { background: #171717; color: #fff; letter-spacing: .1em; }
+    #d5 .block-cust { background: #fff; border-color: #e5e5e5; color: #171717; }
+    #d5 .block-cust .led { display: none; }
+    #d5 .log-bar { border-top: 1px solid #e5e5e5; color: #a3a3a3; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+    #d5 .log-panel { background: #fff; color: #737373; border-top: 1px solid #f5f5f5; }
+
+    /* DESIGN 6 — Заводской терминал */
+    #d6 .titlebar { background: #000; color: #22c55e; font-family: Consolas, monospace; font-size: 11px; }
+    #d6 .titlebar-dots i { background: #22c55e; opacity: .4; }
+    #d6 .app-body { background: #0a0a0a; font-family: Consolas, "Courier New", monospace; }
+    #d6 .toolbar { border-bottom: 1px solid #22c55e; padding: 8px 12px; }
+    #d6 .btn { font-family: inherit; border-radius: 0; font-size: 11px; }
+    #d6 .btn-primary { background: transparent; color: #22c55e; border: 1px solid #22c55e; }
+    #d6 .btn-danger { background: transparent; color: #ef4444; border: 1px solid #ef4444; }
+    #d6 .btn-secondary { background: transparent; color: #86efac; border: 1px solid #166534; }
+    #d6 .status { color: #4ade80; font-size: 11px; }
+    #d6 .diagram-area { padding: 12px; }
+    #d6 .diagram-title { color: #22c55e; }
+    #d6 .diagram-sub { color: #166534; }
+    #d6 .block { border-radius: 0; font-size: 10px; }
+    #d6 .block-plc { background: #0d1f0d; border-color: #4ade80; color: #4ade80; }
+    #d6 .block-plc .led { background: #4ade80; }
+    #d6 .gw-block { background: #0a0a0a; border-color: #a3e635; color: #a3e635; border-style: solid; }
+    #d6 .gw-strip { background: #1a2e05; color: #a3e635; border-bottom: 1px solid #a3e635; }
+    #d6 .block-cust { background: #052e16; border-color: #86efac; color: #86efac; }
+    #d6 .block-cust .led { background: #86efac; }
+    #d6 .log-bar { border-top: 1px solid #166534; color: #166534; font-size: 11px; }
+    #d6 .log-panel { color: #22c55e; background: #050505; border-top: 1px solid #166534; }
+
+    /* DESIGN 7 — Microsoft Fluent */
+    #d7 .titlebar { background: #f3f3f3; color: #323130; }
+    #d7 .titlebar-dots i:nth-child(1) { background: #ff5f57; }
+    #d7 .titlebar-dots i:nth-child(2) { background: #febc2e; }
+    #d7 .titlebar-dots i:nth-child(3) { background: #28c840; }
+    #d7 .app-body { background: #faf9f8; }
+    #d7 .toolbar { background: rgba(255,255,255,.85); backdrop-filter: blur(12px); border-bottom: 1px solid #edebe9; padding: 12px 16px; }
+    #d7 .btn { border-radius: 4px; font-weight: 600; }
+    #d7 .btn-primary { background: #0078d4; color: #fff; }
+    #d7 .btn-danger { background: #d13438; color: #fff; }
+    #d7 .btn-secondary { background: #fff; color: #323130; border-color: #8a8886; }
+    #d7 .status { color: #107c10; font-size: 12px; }
+    #d7 .diagram-area { margin: 12px; background: #fff; border-radius: 8px; box-shadow: 0 1.6px 3.6px rgba(0,0,0,.13); }
+    #d7 .block { border-radius: 6px; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+    #d7 .block-plc { background: #dff6dd; border-color: #107c10; color: #323130; }
+    #d7 .block-plc .led { background: #107c10; }
+    #d7 .gw-block { background: #deecf9; border-color: #0078d4; border-style: solid; color: #323130; border-radius: 8px; }
+    #d7 .gw-strip { background: #0078d4; color: #fff; border-radius: 6px 6px 0 0; }
+    #d7 .block-cust { background: #f3e5f5; border-color: #8764b8; color: #323130; }
+    #d7 .block-cust .led { background: #8764b8; }
+    #d7 .log-bar { background: #faf9f8; border-top: 1px solid #edebe9; color: #605e5c; }
+    #d7 .log-panel { background: #fff; color: #605e5c; border-top: 1px solid #edebe9; border-radius: 0 0 8px 8px; margin: 0 12px 12px; box-shadow: 0 1.6px 3.6px rgba(0,0,0,.13); }
+
+    /* DESIGN 8 — ABB Schneider Teal */
+    #d8 .titlebar { background: #00897b; color: #fff; }
+    #d8 .titlebar-dots i { background: rgba(255,255,255,.35); }
+    #d8 .app-body { background: #eceff1; }
+    #d8 .toolbar { background: #fff; border-bottom: 2px solid #00897b; }
+    #d8 .btn-primary { background: #00897b; color: #fff; }
+    #d8 .btn-danger { background: #e53935; color: #fff; }
+    #d8 .btn-secondary { background: #eceff1; color: #263238; border-color: #90a4ae; }
+    #d8 .status { color: #00897b; font-weight: 700; }
+    #d8 .diagram-area { background: #fff; margin: 12px; border-left: 4px solid #00897b; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+    #d8 .block-plc { background: #e0f2f1; border-color: #00897b; color: #263238; }
+    #d8 .block-plc .led { background: #00897b; }
+    #d8 .gw-block { background: #fff3e0; border-color: #ff6f00; border-style: solid; color: #263238; }
+    #d8 .gw-strip { background: #ff6f00; color: #fff; }
+    #d8 .block-cust { background: #e8eaf6; border-color: #5c6bc0; color: #263238; }
+    #d8 .block-cust .led { background: #5c6bc0; }
+    #d8 .log-bar { background: #cfd8dc; color: #546e7a; }
+    #d8 .log-panel { background: #263238; color: #80cbc4; }
+
+    /* DESIGN 9 — Retro HMI панель */
+    #d9 .titlebar {
+      background: linear-gradient(180deg, #a89880, #8b7355);
+      color: #fff; text-shadow: 1px 1px 0 #5d4037;
+      border-bottom: 2px solid #5d4037;
+    }
+    #d9 .titlebar-dots i { background: #5d4037; }
+    #d9 .app-body { background: #d4c4a8; }
+    #d9 .toolbar {
+      background: linear-gradient(180deg, #e8dcc8, #d4c4a8);
+      border-bottom: 3px solid #8b7355;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.5);
+    }
+    #d9 .btn {
+      border-radius: 6px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.4), 0 2px 4px rgba(0,0,0,.2);
+      text-shadow: 0 1px 0 rgba(0,0,0,.2);
+    }
+    #d9 .btn-primary { background: linear-gradient(180deg,#4caf50,#388e3c); color: #fff; border: 1px solid #2e7d32; }
+    #d9 .btn-danger { background: linear-gradient(180deg,#ef5350,#c62828); color: #fff; border: 1px solid #b71c1c; }
+    #d9 .btn-secondary { background: linear-gradient(180deg,#fff,#e0e0e0); color: #3d3229; border: 1px solid #8b7355; }
+    #d9 .status { color: #2e7d32; font-weight: 800; font-size: 13px; }
+    #d9 .diagram-area {
+      background: #c8b896; margin: 10px;
+      border: 4px solid #8b7355; border-radius: 4px;
+      box-shadow: inset 0 2px 8px rgba(0,0,0,.15);
+    }
+    #d9 .diagram-title { color: #3d3229; text-transform: uppercase; }
+    #d9 .block {
+      border-radius: 4px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.3), 0 2px 4px rgba(0,0,0,.15);
+      border-width: 2px; border-style: outset;
+    }
+    #d9 .block-plc { background: #c8e6c9; border-color: #2e7d32; color: #1b5e20; }
+    #d9 .block-plc .led { background: #2e7d32; box-shadow: 0 0 4px #2e7d32; }
+    #d9 .gw-block { background: #ffe0b2; border-color: #e65100; border-style: outset; color: #3d3229; }
+    #d9 .gw-strip { background: #e65100; color: #fff; }
+    #d9 .block-cust { background: #d7ccc8; border-color: #5d4037; color: #3d3229; }
+    #d9 .block-cust .led { background: #5d4037; }
+    #d9 .log-bar { background: #8b7355; color: #fff; font-weight: 700; text-transform: uppercase; font-size: 11px; }
+    #d9 .log-panel { background: #1a1a1a; color: #ffb74d; border: 4px solid #8b7355; margin: 0 10px 10px; }
+
+    /* DESIGN 10 — Ночная смена */
+    #d10 .titlebar { background: #2a2744; color: #a5b4fc; border-bottom: 1px solid #4c4866; }
+    #d10 .titlebar-dots i { background: #4c4866; }
+    #d10 .app-body { background: #1e1b3a; }
+    #d10 .toolbar { background: #2a2744; border-bottom: 1px solid #4c4866; }
+    #d10 .btn-primary { background: #818cf8; color: #1e1b3a; border-radius: 20px; }
+    #d10 .btn-danger { background: #fca5a5; color: #1e1b3a; border-radius: 20px; }
+    #d10 .btn-secondary { background: transparent; color: #c7d2fe; border-color: #4c4866; border-radius: 20px; }
+    #d10 .status { color: #6ee7b7; font-size: 12px; }
+    #d10 .diagram-area {
+      background: #2a2744; margin: 14px; border-radius: 16px;
+      border: 1px solid #4c4866;
+    }
+    #d10 .diagram-title { color: #e2e8f0; }
+    #d10 .diagram-sub { color: #818cf8; }
+    #d10 .block { border-radius: 12px; }
+    #d10 .block-plc { background: #1a3a2f; border-color: #6ee7b7; color: #ecfdf5; }
+    #d10 .block-plc .led { background: #6ee7b7; box-shadow: 0 0 10px #6ee7b7; }
+    #d10 .gw-block { background: #3d3520; border-color: #fcd34d; color: #fef9c3; border-radius: 14px; }
+    #d10 .gw-strip { background: linear-gradient(90deg,#fcd34d,#fbbf24); color: #1e1b3a; border-radius: 12px 12px 0 0; }
+    #d10 .block-cust { background: #1e3a5f; border-color: #93c5fd; color: #e0f2fe; }
+    #d10 .block-cust .led { background: #93c5fd; box-shadow: 0 0 10px #93c5fd; }
+    #d10 .log-bar { background: #2a2744; border-top: 1px solid #4c4866; color: #818cf8; }
+    #d10 .log-panel { background: #151328; color: #a5b4fc; border-top: 1px solid #4c4866; }
+
+    .design-panel { display: none; width: 100%; height: 100%; align-items: center; justify-content: center; }
+    .design-panel.active { display: flex; }
+
+    @media (max-width: 900px) {
+      .shell { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+      .sidebar { max-height: 200px; }
+      .design-list { display: flex; overflow-x: auto; padding: 8px; gap: 4px; }
+      .design-item { min-width: 140px; margin: 0; }
+      .app-window { transform: scale(.85); transform-origin: top center; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="sidebar-head">
+        <h1>10 дизайнов программы</h1>
+        <p>Полный макет окна 1024×720. Выберите стиль — применим в PySide6.</p>
+      </div>
+      <nav class="design-list" id="nav"></nav>
+      <div class="sidebar-foot">
+        <button id="btn-copy">Выбрать этот дизайн</button>
+        <button class="secondary" id="btn-all">Показать все (скролл)</button>
+        <a href="index.html">← Инструкция по запуску</a>
+      </div>
+    </aside>
+
+    <main class="stage-wrap">
+      <div class="stage-bar">
+        <span>Просмотр: <strong id="current-label">1. Промышленный офис</strong></span>
+        <span id="current-tag">Текущий стиль приложения</span>
+      </div>
+      <div class="stage" id="stage"></div>
+    </main>
+  </div>
+
+  <script>
+    const DESIGNS = [
+      { id: 1, name: "Промышленный офис", tag: "Текущий стиль · светлый SCADA",
+        texts: { title: "OPC UA шлюз ОВЕН", start: "Запустить", stop: "Остановить", save: "Сохранить", test: "Эмулятор", stopTest: "Стоп тест", status: "● Готов", log: "▾ Журнал событий" }},
+      { id: 2, name: "Siemens WinCC", tag: "Классическая HMI · объёмные кнопки",
+        texts: { title: "OPC UA Gateway — WinCC", start: "START", stop: "STOP", save: "SAVE", test: "SIMULATION", stopTest: "STOP SIM", status: "READY", log: "Event Log" }},
+      { id: 3, name: "Тёмная SCADA", tag: "Диспетчерская · неоновые статусы",
+        texts: { title: "OPC UA шлюз ОВЕН", start: "Запустить шлюз", stop: "Остановить", save: "Сохранить", test: "Тест / Эмулятор", stopTest: "Остановить тест", status: "Готов", log: "▾ Журнал" }},
+      { id: 4, name: "ОВЕН Industrial", tag: "Оранжевый бренд · зелёные ПЛК",
+        texts: { title: "Шлюз OPC UA · ОВЕН210", start: "Пуск", stop: "Стоп", save: "Записать", test: "Тестовый режим", stopTest: "Выход из теста", status: "● В режиме ожидания", log: "Журнал" }},
+      { id: 5, name: "Минимализм", tag: "Flat · без лишних элементов",
+        texts: { title: "Gateway", start: "Run", stop: "Stop", save: "Save", test: "Test", stopTest: "End test", status: "Ready", log: "Log" }},
+      { id: 6, name: "Заводской терминал", tag: "Чёрный экран · зелёный текст",
+        texts: { title: "OPC_UA_GATEWAY v1.0", start: "[RUN]", stop: "[HALT]", save: "[SAVE]", test: "[SIM]", stopTest: "[SIM OFF]", status: "STATUS: IDLE", log: "> LOG STREAM" }},
+      { id: 7, name: "Microsoft Fluent", tag: "Windows 11 · мягкие тени",
+        texts: { title: "OPC UA Gateway", start: "Запуск", stop: "Завершить", save: "Применить", test: "Демонстрация", stopTest: "Завершить демо", status: "Готово к работе", log: "Журнал событий" }},
+      { id: 8, name: "ABB / Schneider", tag: "Бирюзовый industrial",
+        texts: { title: "OPC UA Шлюз · Automation", start: "Включить", stop: "Отключить", save: "Сохранить конфиг", test: "Эмуляция ПЛК", stopTest: "Стоп эмуляции", status: "● Standby", log: "Protocol log" }},
+      { id: 9, name: "Retro HMI панель", tag: "Бежевые панели оператора",
+        texts: { title: "Панель OPC UA", start: "ПУСК", stop: "СТОП", save: "ЗАПИСЬ", test: "ТЕСТ", stopTest: "СБРОС", status: "ОЖИДАНИЕ", log: "▾ АРХИВ СОБЫТИЙ" }},
+      { id: 10, name: "Ночная смена", tag: "Мягкий тёмно-синий",
+        texts: { title: "OPC UA шлюз · Night", start: "Запустить", stop: "Стоп", save: "Сохранить", test: "Эмулятор", stopTest: "Стоп", status: "● Готов", log: "Журнал" }}
+    ];
+
+    function appHtml(id, t) {
+      const leg = LEGEND[id] || LEGEND[1];
+      return `
+      <div class="app-window" id="d${id}">
+        <div class="titlebar">
+          <div class="titlebar-dots"><i></i><i></i><i></i></div>
+          <div class="titlebar-title">${t.title}</div>
+          <div style="width:46px"></div>
+        </div>
+        <div class="app-body">
+          <div class="toolbar">
+            <button class="btn btn-primary">${t.start}</button>
+            <button class="btn btn-danger">${t.stop}</button>
+            <button class="btn btn-secondary">${t.save}</button>
+            <button class="btn btn-secondary">${t.test}</button>
+            <button class="btn btn-danger">${t.stopTest}</button>
+            <span class="spacer"></span>
+            <span class="status">${t.status}</span>
+          </div>
+          <div class="diagram-area">
+            <div class="diagram-title">Схема OPC UA шлюза</div>
+            <div class="diagram-sub">Нажмите на блок для настройки · зелёный — работает · красный — ошибка</div>
+            <div class="flow">
+              <div class="plc-row">
+                <div class="block block-plc"><strong><span class="led"></span>ПЛК ОВЕН210 #1</strong><span class="addr">127.0.0.1:4840</span></div>
+                <div class="block block-plc"><strong><span class="led"></span>ПЛК ОВЕН210 #2</strong><span class="addr">127.0.0.1:4842</span></div>
+                <div class="block block-plc"><strong><span class="led"></span>ПЛК ОВЕН210 #3</strong><span class="addr">127.0.0.1:4844</span></div>
+              </div>
+              <div class="arrow">↓ OPC UA</div>
+              <div class="gw-block">
+                <div class="gw-strip">ШЛЮЗ WINDOWS · gateway.py</div>
+                <div class="gw-inner">
+                  <span>OPC UA клиент</span><span>→</span>
+                  <span><strong>ОПРОС · КЭШ · ЛОГИ</strong></span><span>→</span>
+                  <span>OPC UA сервер :4841</span>
+                </div>
+              </div>
+              <div class="arrow">↓ OPC UA :4841</div>
+              <div class="block block-cust"><strong><span class="led"></span>Клиент заказчика</strong><span class="addr">UaExpert · SCADA · MES</span></div>
+              <div class="legend">
+                <span><i style="background:${leg[0]}"></i>ПЛК (источник)</span>
+                <span><i style="background:${leg[1]}"></i>Шлюз (агрегатор)</span>
+                <span><i style="background:${leg[2]}"></i>Клиент (потребитель)</span>
+              </div>
+            </div>
+          </div>
+          <div class="log-bar"><span>${t.log}</span><span class="spacer"></span><span style="opacity:.6;font-size:11px">Очистить</span></div>
+          <div class="log-panel">[GUI] Загружены настройки: settings.json<br>[GUI] Нажмите «Сохранить» перед запуском<br>2026-07-21 17:30:01 [INFO] gateway: Локальный OPC UA сервер инициализирован</div>
+        </div>
+      </div>`;
+    }
+
+    const LEGEND = {
+      1: ["#15803d","#b45309","#0369a1"], 2: ["#276749","#d69e2e","#2b6cb0"],
+      3: ["#34d399","#fbbf24","#a78bfa"], 4: ["#2d6a4f","#e85d04","#1565c0"],
+      5: ["#171717","#171717","#525252"], 6: ["#4ade80","#a3e635","#86efac"],
+      7: ["#107c10","#0078d4","#8764b8"], 8: ["#00897b","#ff6f00","#5c6bc0"],
+      9: ["#2e7d32","#e65100","#5d4037"], 10: ["#6ee7b7","#fcd34d","#93c5fd"]
+    };
+
+    let current = parseInt(localStorage.getItem("opcua_design_choice") || "1", 10);
+    let showAll = false;
+
+    function renderNav() {
+      document.getElementById("nav").innerHTML = DESIGNS.map(d =>
+        `<button class="design-item${d.id === current ? " active" : ""}" data-id="${d.id}">
+          <span class="num">Дизайн ${d.id} / 10</span>
+          <span class="name">${d.name}</span>
+        </button>`
+      ).join("");
+      document.querySelectorAll(".design-item").forEach(btn =>
+        btn.addEventListener("click", () => { current = +btn.dataset.id; showAll = false; render(); })
+      );
+    }
+
+    function renderStage() {
+      const stage = document.getElementById("stage");
+      if (showAll) {
+        stage.style.flexDirection = "column";
+        stage.style.alignItems = "center";
+        stage.style.gap = "40px";
+        stage.innerHTML = DESIGNS.map(d =>
+          `<p style="color:#94a3b8;font-size:13px;margin-bottom:8px;text-align:center;width:100%">${d.id}. ${d.name} — ${d.tag}</p>` +
+          appHtml(d.id, d.texts)
+        ).join("");
+      } else {
+        stage.style.flexDirection = "";
+        const d = DESIGNS.find(x => x.id === current);
+        stage.innerHTML = appHtml(current, d.texts);
+        document.getElementById("current-label").textContent = `${d.id}. ${d.name}`;
+        document.getElementById("current-tag").textContent = d.tag;
+      }
+    }
+
+    function render() {
+      renderNav();
+      renderStage();
+    }
+
+    document.getElementById("btn-copy").addEventListener("click", () => {
+      const d = DESIGNS.find(x => x.id === current);
+      localStorage.setItem("opcua_design_choice", current);
+      alert(`Выбран дизайн ${d.id}: ${d.name}\n\nНапишите в чат: «Применить дизайн ${d.id}»`);
+    });
+
+    document.getElementById("btn-all").addEventListener("click", () => {
+      showAll = !showAll;
+      document.getElementById("btn-all").textContent = showAll ? "Один дизайн" : "Показать все (скролл)";
+      renderStage();
+    });
+
+    render();
+  </script>
+</body>
+</html>

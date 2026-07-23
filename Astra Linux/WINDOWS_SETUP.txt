@@ -1,0 +1,38 @@
+Сборка через WSL/Docker на этом ПК
+==================================
+
+Проверка показала: виртуализация CPU отключена в BIOS/UEFI.
+Без неё не работают WSL2 и Docker Desktop.
+
+Что сделать
+-----------
+1. Перезагрузите ПК и войдите в BIOS/UEFI (Del, F2, F10 или Esc при старте).
+2. Включите:
+   - Intel Virtualization Technology (VT-x), или
+   - AMD-V / SVM Mode
+3. В Windows (если есть): «Компоненты Windows» →
+   - Подсистема Windows для Linux
+   - Платформа виртуальной машины
+4. Сохраните BIOS, перезагрузитесь.
+5. PowerShell от администратора:
+
+   Set-ExecutionPolicy Bypass -Scope Process -Force
+   & "ПУТЬ\К\ПРОЕКТУ\Astra Linux\Setup-WSL.ps1"
+
+6. После успеха появятся:
+   - Astra Linux\OPC_UA_Gateway\
+   - Astra Linux\release\opcua-gateway-astra-se18-x86_64.tar.gz
+
+Если WSL недоступен
+-------------------
+Соберите на машине с Astra Linux SE 1.8 x86_64:
+
+   cd "Astra Linux"
+   chmod +x *.sh packaging/Запуск.sh
+   ./preflight.sh
+   sudo ./install_system_deps.sh
+   ./validate_source.sh
+   ./build.sh
+   ./package_release.sh
+
+Лог последней попытки WSL: setup-wsl.log

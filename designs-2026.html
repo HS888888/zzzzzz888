@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OPC UA шлюз — Top Design 2026</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Geist+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600;700&family=Outfit:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --shell: #09090b;
+      --panel: #18181b;
+      --line: #27272a;
+      --muted: #a1a1aa;
+      --text: #fafafa;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      font-family: "DM Sans", system-ui, sans-serif;
+      background: var(--shell);
+      color: var(--text);
+      overflow: hidden;
+    }
+    .shell {
+      display: grid;
+      grid-template-columns: 300px 1fr;
+      height: 100vh;
+    }
+    .sidebar {
+      background: var(--panel);
+      border-right: 1px solid var(--line);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .sidebar-head {
+      padding: 22px 18px 14px;
+      border-bottom: 1px solid var(--line);
+    }
+    .sidebar-head .kicker {
+      font-size: 10px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: #71717a;
+      margin-bottom: 8px;
+    }
+    .sidebar-head h1 {
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      margin-bottom: 6px;
+    }
+    .sidebar-head p {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+    .design-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px;
+    }
+    .design-item {
+      width: 100%;
+      text-align: left;
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 12px;
+      padding: 12px 12px;
+      margin-bottom: 6px;
+      cursor: pointer;
+      color: #d4d4d8;
+      font-family: inherit;
+      transition: 0.15s ease;
+    }
+    .design-item:hover { background: #27272a; }
+    .design-item.active {
+      background: #fafafa;
+      color: #09090b;
+      border-color: #fafafa;
+    }
+    .design-item .num {
+      font-size: 10px;
+      opacity: 0.55;
+      display: block;
+      margin-bottom: 2px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .design-item .name {
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+    .design-item .hint {
+      font-size: 11px;
+      opacity: 0.65;
+      margin-top: 3px;
+    }
+    .sidebar-foot {
+      padding: 12px;
+      border-top: 1px solid var(--line);
+    }
+    .sidebar-foot button {
+      width: 100%;
+      padding: 11px;
+      border: none;
+      border-radius: 10px;
+      background: #fafafa;
+      color: #09090b;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      margin-bottom: 8px;
+    }
+    .sidebar-foot button.secondary {
+      background: transparent;
+      color: #a1a1aa;
+      border: 1px solid #3f3f46;
+    }
+    .sidebar-foot a {
+      display: block;
+      text-align: center;
+      font-size: 11px;
+      color: #71717a;
+      margin-top: 6px;
+      text-decoration: none;
+    }
+
+    .stage-wrap {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background:
+        radial-gradient(1200px 500px at 70% -10%, rgba(255,255,255,0.06), transparent 60%),
+        #050506;
+    }
+    .stage-bar {
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(24,24,27,0.8);
+      backdrop-filter: blur(10px);
+      flex-shrink: 0;
+    }
+    .stage-bar span { font-size: 13px; color: #a1a1aa; }
+    .stage-bar strong { color: #fafafa; }
+    .stage {
+      flex: 1;
+      overflow: auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 28px;
+    }
+
+    .app-window {
+      width: 1040px;
+      height: 700px;
+      max-width: 100%;
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 40px 100px rgba(0,0,0,0.55);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+    }
+    .titlebar {
+      height: 36px;
+      display: flex;
+      align-items: center;
+      padding: 0 14px;
+      gap: 10px;
+      font-size: 12px;
+      flex-shrink: 0;
+    }
+    .titlebar-dots { display: flex; gap: 6px; }
+    .titlebar-dots i {
+      width: 10px; height: 10px; border-radius: 50%; display: block;
+    }
+    .titlebar-title { flex: 1; text-align: center; opacity: 0.8; }
+    .app-body { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+    .toolbar {
+      display: flex; align-items: center; gap: 8px;
+      padding: 12px 16px; flex-shrink: 0; flex-wrap: wrap;
+    }
+    .toolbar .spacer { flex: 1; }
+    .btn {
+      padding: 8px 15px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      border: 1px solid transparent;
+      white-space: nowrap;
+      font-family: inherit;
+    }
+    .diagram-area {
+      flex: 1; overflow: auto; padding: 18px 20px; min-height: 0;
+    }
+    .diagram-title { font-size: 15px; font-weight: 650; letter-spacing: -0.02em; margin-bottom: 4px; }
+    .diagram-sub { font-size: 12px; margin-bottom: 18px; opacity: 0.6; }
+    .flow { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+    .plc-row { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+    .block {
+      border-radius: 12px;
+      padding: 14px 16px;
+      min-width: 168px;
+      text-align: left;
+      font-size: 11px;
+      line-height: 1.4;
+      border: 1px solid;
+      position: relative;
+    }
+    .block .top {
+      display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+    }
+    .block .led {
+      width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+    }
+    .block strong { font-size: 12px; font-weight: 650; }
+    .block .addr {
+      font-family: "Geist Mono", Consolas, monospace;
+      font-size: 10px;
+      opacity: 0.7;
+    }
+    .arrow {
+      font-size: 11px;
+      opacity: 0.55;
+      font-family: "Geist Mono", monospace;
+      letter-spacing: 0.04em;
+    }
+    .gw-block {
+      width: 100%; max-width: 600px;
+      border-radius: 14px; overflow: hidden;
+      border: 1px solid;
+    }
+    .gw-strip {
+      padding: 10px 14px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+    }
+    .gw-inner {
+      display: flex; align-items: center; justify-content: center;
+      gap: 14px; font-size: 11px; flex-wrap: wrap;
+      padding: 16px 14px;
+    }
+    .legend {
+      display: flex; gap: 18px; justify-content: center;
+      flex-wrap: wrap; margin-top: 18px; font-size: 11px; opacity: 0.7;
+    }
+    .legend span i {
+      display: inline-block; width: 8px; height: 8px;
+      border-radius: 50%; margin-right: 6px; vertical-align: middle;
+    }
+    .log-bar {
+      display: flex; align-items: center;
+      padding: 10px 16px; font-size: 12px; flex-shrink: 0;
+    }
+    .log-bar .spacer { flex: 1; }
+    .log-panel {
+      height: 88px; padding: 10px 16px;
+      font-family: "Geist Mono", Consolas, monospace;
+      font-size: 10px; line-height: 1.65;
+      overflow: hidden; flex-shrink: 0;
+    }
+
+    /* ═══════════ 1 AURORA CONTROL ═══════════ */
+    #d1 .titlebar { background: #0c1220; color: #94a3b8; border-bottom: 1px solid #1e293b; }
+    #d1 .titlebar-dots i:nth-child(1){background:#f87171} #d1 .titlebar-dots i:nth-child(2){background:#fbbf24} #d1 .titlebar-dots i:nth-child(3){background:#34d399}
+    #d1 .app-body {
+      font-family: "Outfit", sans-serif;
+      background:
+        radial-gradient(900px 400px at 15% 0%, rgba(56,189,248,0.18), transparent 55%),
+        radial-gradient(700px 360px at 90% 20%, rgba(52,211,153,0.12), transparent 50%),
+        #0b1220;
+      color: #e2e8f0;
+    }
+    #d1 .toolbar { background: rgba(15,23,42,0.7); border-bottom: 1px solid rgba(148,163,184,0.15); backdrop-filter: blur(12px); }
+    #d1 .btn-primary { background: linear-gradient(135deg,#38bdf8,#22d3ee); color: #0b1220; border: none; }
+    #d1 .btn-danger { background: rgba(248,113,113,0.15); color: #fca5a5; border-color: rgba(248,113,113,0.35); }
+    #d1 .btn-secondary { background: rgba(148,163,184,0.08); color: #cbd5e1; border-color: rgba(148,163,184,0.2); }
+    #d1 .status { color: #34d399; font-weight: 600; }
+    #d1 .diagram-area { margin: 12px; border-radius: 16px; background: rgba(15,23,42,0.55); border: 1px solid rgba(148,163,184,0.12); }
+    #d1 .block-plc { background: rgba(16,185,129,0.1); border-color: rgba(52,211,153,0.35); color: #ecfdf5; }
+    #d1 .block-plc .led { background: #34d399; box-shadow: 0 0 10px #34d399; }
+    #d1 .gw-block { border-color: rgba(56,189,248,0.35); background: rgba(14,165,233,0.08); }
+    #d1 .gw-strip { background: linear-gradient(90deg, rgba(14,165,233,0.35), rgba(34,211,238,0.2)); color: #e0f2fe; }
+    #d1 .block-cust { background: rgba(99,102,241,0.12); border-color: rgba(165,180,252,0.35); color: #eef2ff; }
+    #d1 .block-cust .led { background: #a5b4fc; }
+    #d1 .log-bar { background: rgba(15,23,42,0.8); color: #94a3b8; border-top: 1px solid rgba(148,163,184,0.12); }
+    #d1 .log-panel { background: #020617; color: #67e8f9; }
+
+    /* ═══════════ 2 PAPER OPS ═══════════ */
+    #d2 .titlebar { background: #f5f1ea; color: #57534e; border-bottom: 1px solid #e7e5e4; }
+    #d2 .titlebar-dots i:nth-child(1){background:#ef4444} #d2 .titlebar-dots i:nth-child(2){background:#eab308} #d2 .titlebar-dots i:nth-child(3){background:#22c55e}
+    #d2 .app-body {
+      font-family: "Instrument Sans", sans-serif;
+      background: #f7f4ef;
+      color: #1c1917;
+    }
+    #d2 .toolbar { background: #fffdf9; border-bottom: 1px solid #e7e5e4; }
+    #d2 .btn-primary { background: #1c1917; color: #fafaf9; }
+    #d2 .btn-danger { background: #fff; color: #b91c1c; border-color: #fecaca; }
+    #d2 .btn-secondary { background: #fff; color: #44403c; border-color: #d6d3d1; }
+    #d2 .status { color: #15803d; font-weight: 600; }
+    #d2 .diagram-area { margin: 14px; background: #fffdf9; border: 1px solid #e7e5e4; border-radius: 18px; }
+    #d2 .block { border-radius: 14px; }
+    #d2 .block-plc { background: #f0fdf4; border-color: #bbf7d0; }
+    #d2 .block-plc .led { background: #16a34a; }
+    #d2 .gw-block { border-color: #fed7aa; background: #fff7ed; }
+    #d2 .gw-strip { background: #1c1917; color: #fafaf9; }
+    #d2 .block-cust { background: #eff6ff; border-color: #bfdbfe; }
+    #d2 .block-cust .led { background: #2563eb; }
+    #d2 .log-bar { background: #fffdf9; border-top: 1px solid #e7e5e4; color: #78716c; }
+    #d2 .log-panel { background: #f5f5f4; color: #57534e; }
+
+    /* ═══════════ 3 CARBON SIGNAL ═══════════ */
+    #d3 .titlebar { background: #111; color: #a3a3a3; border-bottom: 1px solid #262626; }
+    #d3 .titlebar-dots i { background: #404040; }
+    #d3 .app-body {
+      font-family: "Space Grotesk", sans-serif;
+      background: #0a0a0a;
+      color: #f5f5f5;
+    }
+    #d3 .toolbar { background: #111; border-bottom: 1px solid #262626; }
+    #d3 .btn { border-radius: 999px; }
+    #d3 .btn-primary { background: #f5f5f5; color: #0a0a0a; }
+    #d3 .btn-danger { background: transparent; color: #f87171; border-color: #7f1d1d; }
+    #d3 .btn-secondary { background: transparent; color: #d4d4d4; border-color: #404040; }
+    #d3 .status { color: #a3e635; font-weight: 600; }
+    #d3 .diagram-area {
+      margin: 14px; border-radius: 20px;
+      background: linear-gradient(180deg, #141414, #0f0f0f);
+      border: 1px solid #262626;
+    }
+    #d3 .block { border-radius: 16px; }
+    #d3 .block-plc { background: #12200f; border-color: #3f6212; color: #ecfccb; }
+    #d3 .block-plc .led { background: #a3e635; box-shadow: 0 0 12px rgba(163,230,53,.6); }
+    #d3 .gw-block { border-color: #525252; background: #171717; }
+    #d3 .gw-strip { background: #262626; color: #f5f5f5; letter-spacing: 0.08em; }
+    #d3 .block-cust { background: #171717; border-color: #525252; color: #e5e5e5; }
+    #d3 .block-cust .led { background: #e5e5e5; }
+    #d3 .log-bar { background: #111; border-top: 1px solid #262626; color: #737373; }
+    #d3 .log-panel { background: #050505; color: #a3e635; }
+
+    /* ═══════════ 4 COASTAL HMI ═══════════ */
+    #d4 .titlebar { background: #e8f1f5; color: #334155; border-bottom: 1px solid #cfe0ea; }
+    #d4 .titlebar-dots i:nth-child(1){background:#ef4444} #d4 .titlebar-dots i:nth-child(2){background:#eab308} #d4 .titlebar-dots i:nth-child(3){background:#22c55e}
+    #d4 .app-body {
+      font-family: "DM Sans", sans-serif;
+      background: linear-gradient(180deg, #eef6fa 0%, #e4eef4 100%);
+      color: #0f172a;
+    }
+    #d4 .toolbar { background: rgba(255,255,255,0.75); border-bottom: 1px solid #d5e4ec; backdrop-filter: blur(8px); }
+    #d4 .btn-primary { background: #0ea5e9; color: #fff; box-shadow: 0 8px 20px rgba(14,165,233,0.25); }
+    #d4 .btn-danger { background: #fff; color: #e11d48; border-color: #fecdd3; }
+    #d4 .btn-secondary { background: #fff; color: #334155; border-color: #cbd5e1; }
+    #d4 .status { color: #059669; font-weight: 650; }
+    #d4 .diagram-area { margin: 14px; background: rgba(255,255,255,0.8); border: 1px solid #d5e4ec; border-radius: 20px; }
+    #d4 .block-plc { background: #ecfdf5; border-color: #a7f3d0; }
+    #d4 .block-plc .led { background: #10b981; }
+    #d4 .gw-block { border-color: #7dd3fc; background: #f0f9ff; }
+    #d4 .gw-strip { background: #0284c7; color: #fff; }
+    #d4 .block-cust { background: #eef2ff; border-color: #c7d2fe; }
+    #d4 .block-cust .led { background: #6366f1; }
+    #d4 .log-bar { background: rgba(255,255,255,0.8); border-top: 1px solid #d5e4ec; color: #64748b; }
+    #d4 .log-panel { background: #f8fafc; color: #475569; }
+
+    /* ═══════════ 5 EDITORIAL NAVY ═══════════ */
+    #d5 .titlebar { background: #102a43; color: #9fb3c8; }
+    #d5 .titlebar-dots i { background: #486581; }
+    #d5 .app-body {
+      font-family: "Instrument Sans", sans-serif;
+      background: #f0f4f8;
+      color: #102a43;
+    }
+    #d5 .toolbar { background: #102a43; color: #f0f4f8; }
+    #d5 .btn-primary { background: #f0b429; color: #102a43; }
+    #d5 .btn-danger { background: transparent; color: #ff9b9b; border-color: #9b1b1b; }
+    #d5 .btn-secondary { background: transparent; color: #d9e2ec; border-color: #486581; }
+    #d5 .status { color: #f0b429; font-weight: 700; }
+    #d5 .diagram-area { margin: 14px; background: #fff; border: 1px solid #d9e2ec; border-radius: 4px; }
+    #d5 .block { border-radius: 4px; }
+    #d5 .block-plc { background: #e3f9e5; border-color: #8bcf8f; }
+    #d5 .block-plc .led { background: #2f9e44; }
+    #d5 .gw-block { border-color: #f0b429; background: #fff9db; border-style: solid; }
+    #d5 .gw-strip { background: #102a43; color: #f0b429; letter-spacing: 0.08em; }
+    #d5 .block-cust { background: #d9e2ec; border-color: #9fb3c8; }
+    #d5 .block-cust .led { background: #243b53; }
+    #d5 .log-bar { background: #fff; border-top: 1px solid #d9e2ec; color: #627d98; }
+    #d5 .log-panel { background: #102a43; color: #9fb3c8; }
+
+    /* ═══════════ 6 GLASS RACK ═══════════ */
+    #d6 .titlebar { background: rgba(15,23,42,0.9); color: #cbd5e1; border-bottom: 1px solid rgba(255,255,255,0.08); }
+    #d6 .titlebar-dots i:nth-child(1){background:#f87171} #d6 .titlebar-dots i:nth-child(2){background:#fbbf24} #d6 .titlebar-dots i:nth-child(3){background:#34d399}
+    #d6 .app-body {
+      font-family: "Outfit", sans-serif;
+      background:
+        linear-gradient(145deg, rgba(15,23,42,0.92), rgba(30,41,59,0.95)),
+        url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%2394a3b8' fill-opacity='0.05'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+      color: #f1f5f9;
+    }
+    #d6 .toolbar { background: rgba(255,255,255,0.04); border-bottom: 1px solid rgba(255,255,255,0.08); backdrop-filter: blur(16px); }
+    #d6 .btn-primary { background: rgba(255,255,255,0.92); color: #0f172a; }
+    #d6 .btn-danger { background: rgba(244,63,94,0.18); color: #fb7185; border-color: rgba(251,113,133,0.35); }
+    #d6 .btn-secondary { background: rgba(255,255,255,0.06); color: #e2e8f0; border-color: rgba(255,255,255,0.12); }
+    #d6 .status { color: #5eead4; font-weight: 600; }
+    #d6 .diagram-area {
+      margin: 14px; border-radius: 18px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      backdrop-filter: blur(18px);
+    }
+    #d6 .block { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.14); }
+    #d6 .block-plc .led { background: #2dd4bf; box-shadow: 0 0 10px #2dd4bf; }
+    #d6 .gw-block { border-color: rgba(255,255,255,0.18); background: rgba(255,255,255,0.07); }
+    #d6 .gw-strip { background: rgba(255,255,255,0.1); color: #f8fafc; }
+    #d6 .block-cust .led { background: #93c5fd; }
+    #d6 .log-bar { background: rgba(0,0,0,0.25); color: #94a3b8; border-top: 1px solid rgba(255,255,255,0.08); }
+    #d6 .log-panel { background: rgba(2,6,23,0.7); color: #99f6e4; }
+
+    /* ═══════════ 7 STUDIO GRAPHITE ═══════════ */
+    #d7 .titlebar { background: #2a2a2e; color: #c7c7cc; border-bottom: 1px solid #3a3a40; }
+    #d7 .titlebar-dots i:nth-child(1){background:#ff5f57} #d7 .titlebar-dots i:nth-child(2){background:#febc2e} #d7 .titlebar-dots i:nth-child(3){background:#28c840}
+    #d7 .app-body {
+      font-family: "DM Sans", sans-serif;
+      background: #1c1c1e;
+      color: #f5f5f7;
+    }
+    #d7 .toolbar { background: #2c2c2e; border-bottom: 1px solid #3a3a3c; }
+    #d7 .btn { border-radius: 10px; }
+    #d7 .btn-primary { background: #0a84ff; color: #fff; }
+    #d7 .btn-danger { background: #ff453a; color: #fff; }
+    #d7 .btn-secondary { background: #3a3a3c; color: #f5f5f7; }
+    #d7 .status { color: #30d158; font-weight: 600; }
+    #d7 .diagram-area { margin: 12px; background: #2c2c2e; border-radius: 16px; border: 1px solid #3a3a3c; }
+    #d7 .block-plc { background: #1f2a1f; border-color: #2d6a3e; }
+    #d7 .block-plc .led { background: #30d158; }
+    #d7 .gw-block { border-color: #48484a; background: #3a3a3c; }
+    #d7 .gw-strip { background: #48484a; color: #fff; }
+    #d7 .block-cust { background: #1f2430; border-color: #3a455c; }
+    #d7 .block-cust .led { background: #64d2ff; }
+    #d7 .log-bar { background: #2c2c2e; border-top: 1px solid #3a3a3c; color: #98989d; }
+    #d7 .log-panel { background: #000; color: #98989d; }
+
+    /* ═══════════ 8 FOREST LINE ═══════════ */
+    #d8 .titlebar { background: #14261c; color: #b7c4b3; }
+    #d8 .titlebar-dots i { background: #3d5a45; }
+    #d8 .app-body {
+      font-family: "Outfit", sans-serif;
+      background: #edf2ea;
+      color: #14261c;
+    }
+    #d8 .toolbar { background: #fff; border-bottom: 1px solid #d5e0d2; }
+    #d8 .btn-primary { background: #2f6b4f; color: #fff; }
+    #d8 .btn-danger { background: #fff; color: #b42318; border-color: #fecdca; }
+    #d8 .btn-secondary { background: #f6f8f4; color: #344054; border-color: #d0d5dd; }
+    #d8 .status { color: #2f6b4f; font-weight: 700; }
+    #d8 .diagram-area { margin: 14px; background: #fff; border: 1px solid #d5e0d2; border-radius: 16px; }
+    #d8 .block-plc { background: #e8f5e9; border-color: #a5d6a7; }
+    #d8 .block-plc .led { background: #2e7d32; }
+    #d8 .gw-block { border-color: #c8e6c9; background: #f1f8e9; }
+    #d8 .gw-strip { background: #1b4332; color: #d8f3dc; }
+    #d8 .block-cust { background: #e3f2fd; border-color: #90caf9; }
+    #d8 .block-cust .led { background: #1565c0; }
+    #d8 .log-bar { background: #fff; border-top: 1px solid #d5e0d2; color: #667085; }
+    #d8 .log-panel { background: #f6f8f4; color: #475467; }
+
+    /* ═══════════ 9 NEON GRID ═══════════ */
+    #d9 .titlebar { background: #05070d; color: #7dd3fc; border-bottom: 1px solid #0ea5e9; }
+    #d9 .titlebar-dots i { background: #0ea5e9; }
+    #d9 .app-body {
+      font-family: "Space Grotesk", sans-serif;
+      background:
+        linear-gradient(rgba(14,165,233,0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(14,165,233,0.06) 1px, transparent 1px),
+        #05070d;
+      background-size: 28px 28px, 28px 28px, auto;
+      color: #e0f2fe;
+    }
+    #d9 .toolbar { background: rgba(5,7,13,0.9); border-bottom: 1px solid rgba(14,165,233,0.35); }
+    #d9 .btn { border-radius: 2px; text-transform: uppercase; letter-spacing: 0.06em; font-size: 11px; }
+    #d9 .btn-primary { background: #0ea5e9; color: #020617; box-shadow: 0 0 18px rgba(14,165,233,0.45); }
+    #d9 .btn-danger { background: transparent; color: #fb7185; border-color: #fb7185; }
+    #d9 .btn-secondary { background: transparent; color: #7dd3fc; border-color: rgba(14,165,233,0.5); }
+    #d9 .status { color: #22d3ee; font-weight: 700; text-shadow: 0 0 10px rgba(34,211,238,0.5); }
+    #d9 .diagram-area { margin: 12px; background: rgba(2,6,23,0.75); border: 1px solid rgba(14,165,233,0.35); border-radius: 4px; }
+    #d9 .block { border-radius: 2px; }
+    #d9 .block-plc { background: rgba(16,185,129,0.08); border-color: #34d399; color: #bbf7d0; }
+    #d9 .block-plc .led { background: #34d399; box-shadow: 0 0 12px #34d399; }
+    #d9 .gw-block { border-color: #38bdf8; background: rgba(14,165,233,0.08); }
+    #d9 .gw-strip { background: rgba(14,165,233,0.2); color: #e0f2fe; letter-spacing: 0.12em; }
+    #d9 .block-cust { background: rgba(168,85,247,0.1); border-color: #c084fc; color: #f3e8ff; }
+    #d9 .block-cust .led { background: #c084fc; box-shadow: 0 0 12px #c084fc; }
+    #d9 .log-bar { background: #020617; border-top: 1px solid rgba(14,165,233,0.35); color: #38bdf8; text-transform: uppercase; letter-spacing: 0.08em; font-size: 11px; }
+    #d9 .log-panel { background: #000; color: #67e8f9; }
+
+    /* ═══════════ 10 SOFT FACTORY ═══════════ */
+    #d10 .titlebar { background: #fff; color: #52525b; border-bottom: 1px solid #e4e4e7; }
+    #d10 .titlebar-dots i:nth-child(1){background:#ef4444} #d10 .titlebar-dots i:nth-child(2){background:#eab308} #d10 .titlebar-dots i:nth-child(3){background:#22c55e}
+    #d10 .app-body {
+      font-family: "DM Sans", sans-serif;
+      background: #f4f4f5;
+      color: #18181b;
+    }
+    #d10 .toolbar { background: #fff; border-bottom: 1px solid #e4e4e7; box-shadow: 0 1px 0 rgba(0,0,0,0.02); }
+    #d10 .btn { border-radius: 999px; padding: 8px 16px; }
+    #d10 .btn-primary { background: #18181b; color: #fafafa; }
+    #d10 .btn-danger { background: #fef2f2; color: #dc2626; border-color: #fecaca; }
+    #d10 .btn-secondary { background: #f4f4f5; color: #3f3f46; border-color: #e4e4e7; }
+    #d10 .status { color: #16a34a; font-weight: 650; }
+    #d10 .diagram-area {
+      margin: 14px; background: #fff; border: 1px solid #e4e4e7;
+      border-radius: 24px; box-shadow: 0 10px 40px rgba(24,24,27,0.06);
+    }
+    #d10 .block { border-radius: 18px; }
+    #d10 .block-plc { background: #f0fdf4; border-color: #bbf7d0; }
+    #d10 .block-plc .led { background: #22c55e; }
+    #d10 .gw-block { border-color: #e4e4e7; background: #fafafa; border-radius: 20px; }
+    #d10 .gw-strip { background: #18181b; color: #fafafa; }
+    #d10 .block-cust { background: #eff6ff; border-color: #bfdbfe; }
+    #d10 .block-cust .led { background: #3b82f6; }
+    #d10 .log-bar { background: #fff; border-top: 1px solid #e4e4e7; color: #71717a; }
+    #d10 .log-panel { background: #fafafa; color: #52525b; }
+
+    @media (max-width: 960px) {
+      .shell { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+      .sidebar { max-height: 220px; }
+      .design-list { display: flex; overflow-x: auto; gap: 6px; }
+      .design-item { min-width: 170px; margin: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="sidebar-head">
+        <div class="kicker">Design Lab · 2026</div>
+        <h1>Топ‑10 новых дизайнов</h1>
+        <p>Полный макет программы. Современные, уникальные стили — без старых HMI-клише.</p>
+      </div>
+      <nav class="design-list" id="nav"></nav>
+      <div class="sidebar-foot">
+        <button id="btn-pick">Выбрать этот дизайн</button>
+        <button class="secondary" id="btn-all">Показать все</button>
+        <a href="designs.html">Старая галерея</a>
+        <a href="index.html">Инструкция</a>
+      </div>
+    </aside>
+
+    <main class="stage-wrap">
+      <div class="stage-bar">
+        <span>Сейчас: <strong id="current-label">1. Aurora Control</strong></span>
+        <span id="current-tag">Стекло · cyan glow · 2026</span>
+      </div>
+      <div class="stage" id="stage"></div>
+    </main>
+  </div>
+
+  <script>
+    const DESIGNS = [
+      { id:1, name:"Aurora Control", tag:"Стекло · cyan glow · OLED dark",
+        texts:{ title:"OPC UA шлюз ОВЕН", start:"Запустить", stop:"Остановить", save:"Сохранить", test:"Эмулятор", stopTest:"Стоп тест", status:"● Готов", log:"▾ Журнал событий" },
+        legend:["#34d399","#38bdf8","#a5b4fc"] },
+      { id:2, name:"Paper Ops", tag:"Тёплый paper UI · product 2026",
+        texts:{ title:"OPC UA Gateway", start:"Run", stop:"Stop", save:"Save", test:"Emulator", stopTest:"End test", status:"● Ready", log:"▾ Event log" },
+        legend:["#16a34a","#1c1917","#2563eb"] },
+      { id:3, name:"Carbon Signal", tag:"Монохром + acid lime",
+        texts:{ title:"GATEWAY // OPC UA", start:"RUN", stop:"HALT", save:"SAVE", test:"SIM", stopTest:"SIM OFF", status:"● IDLE", log:"▾ STREAM" },
+        legend:["#a3e635","#a3a3a3","#e5e5e5"] },
+      { id:4, name:"Coastal HMI", tag:"Светлый industrial · sky accent",
+        texts:{ title:"OPC UA шлюз ОВЕН", start:"Запустить", stop:"Стоп", save:"Сохранить", test:"Эмулятор", stopTest:"Стоп тест", status:"● Готов", log:"▾ Журнал" },
+        legend:["#10b981","#0284c7","#6366f1"] },
+      { id:5, name:"Editorial Navy", tag:"Editorial · navy + amber",
+        texts:{ title:"OPC UA шлюз", start:"Пуск", stop:"Стоп", save:"Записать", test:"Тест", stopTest:"Сброс", status:"● Ожидание", log:"▾ Архив" },
+        legend:["#2f9e44","#f0b429","#243b53"] },
+      { id:6, name:"Glass Rack", tag:"Glassmorphism · server room",
+        texts:{ title:"OPC UA Gateway", start:"Start", stop:"Stop", save:"Apply", test:"Simulate", stopTest:"End", status:"● Standby", log:"▾ Protocol" },
+        legend:["#2dd4bf","#e2e8f0","#93c5fd"] },
+      { id:7, name:"Studio Graphite", tag:"macOS Studio · graphite",
+        texts:{ title:"OPC UA Gateway", start:"Start", stop:"Stop", save:"Save", test:"Test", stopTest:"Stop test", status:"● Ready", log:"▾ Log" },
+        legend:["#30d158","#98989d","#64d2ff"] },
+      { id:8, name:"Forest Line", tag:"Eco industrial · forest green",
+        texts:{ title:"Шлюз OPC UA · ОВЕН", start:"Пуск", stop:"Стоп", save:"Сохранить", test:"Эмулятор", stopTest:"Стоп", status:"● Готов", log:"▾ Журнал" },
+        legend:["#2e7d32","#1b4332","#1565c0"] },
+      { id:9, name:"Neon Grid", tag:"Cyber ops · neon grid 2026",
+        texts:{ title:"OPC_UA // NODE", start:"ENGAGE", stop:"ABORT", save:"COMMIT", test:"SIM", stopTest:"CLEAR", status:"● READY", log:"▾ TELEMETRY" },
+        legend:["#34d399","#38bdf8","#c084fc"] },
+      { id:10, name:"Soft Factory", tag:"Soft SaaS · pill buttons",
+        texts:{ title:"OPC UA шлюз ОВЕН", start:"Запустить", stop:"Остановить", save:"Сохранить", test:"Эмулятор", stopTest:"Стоп тест", status:"● Готов", log:"▾ Журнал событий" },
+        legend:["#22c55e","#18181b","#3b82f6"] }
+    ];
+
+    let current = parseInt(localStorage.getItem("opcua_design_2026") || "1", 10);
+    let showAll = false;
+
+    function appHtml(d) {
+      const t = d.texts;
+      const leg = d.legend;
+      return `
+      <div class="app-window" id="d${d.id}">
+        <div class="titlebar">
+          <div class="titlebar-dots"><i></i><i></i><i></i></div>
+          <div class="titlebar-title">${t.title}</div>
+          <div style="width:46px"></div>
+        </div>
+        <div class="app-body">
+          <div class="toolbar">
+            <button class="btn btn-primary">${t.start}</button>
+            <button class="btn btn-danger">${t.stop}</button>
+            <button class="btn btn-secondary">${t.save}</button>
+            <button class="btn btn-secondary">${t.test}</button>
+            <button class="btn btn-danger">${t.stopTest}</button>
+            <span class="spacer"></span>
+            <span class="status">${t.status}</span>
+          </div>
+          <div class="diagram-area">
+            <div class="diagram-title">Схема OPC UA шлюза</div>
+            <div class="diagram-sub">Нажмите на блок для настройки · зелёный — работает · красный — ошибка</div>
+            <div class="flow">
+              <div class="plc-row">
+                <div class="block block-plc"><div class="top"><span class="led"></span><strong>ПЛК ОВЕН210 #1</strong></div><span class="addr">127.0.0.1:4840</span></div>
+                <div class="block block-plc"><div class="top"><span class="led"></span><strong>ПЛК ОВЕН210 #2</strong></div><span class="addr">127.0.0.1:4842</span></div>
+                <div class="block block-plc"><div class="top"><span class="led"></span><strong>ПЛК ОВЕН210 #3</strong></div><span class="addr">127.0.0.1:4844</span></div>
+              </div>
+              <div class="arrow">↓  OPC UA</div>
+              <div class="gw-block">
+                <div class="gw-strip">ШЛЮЗ WINDOWS · gateway.py</div>
+                <div class="gw-inner">
+                  <span>OPC UA клиент</span><span>→</span>
+                  <span><strong>ОПРОС · КЭШ · ЛОГИ</strong></span><span>→</span>
+                  <span>сервер :4841</span>
+                </div>
+              </div>
+              <div class="arrow">↓  :4841</div>
+              <div class="block block-cust"><div class="top"><span class="led"></span><strong>Клиент заказчика</strong></div><span class="addr">UaExpert · SCADA · MES</span></div>
+              <div class="legend">
+                <span><i style="background:${leg[0]}"></i>ПЛК</span>
+                <span><i style="background:${leg[1]}"></i>Шлюз</span>
+                <span><i style="background:${leg[2]}"></i>Клиент</span>
+              </div>
+            </div>
+          </div>
+          <div class="log-bar"><span>${t.log}</span><span class="spacer"></span><span style="opacity:.55;font-size:11px">Очистить</span></div>
+          <div class="log-panel">[GUI] settings.json loaded<br>[GUI] Save before start<br>2026-07-21 17:40 [INFO] local OPC UA endpoint ready</div>
+        </div>
+      </div>`;
+    }
+
+    function renderNav() {
+      document.getElementById("nav").innerHTML = DESIGNS.map(d => `
+        <button class="design-item${d.id===current?" active":""}" data-id="${d.id}">
+          <span class="num">Design ${String(d.id).padStart(2,"0")} / 10</span>
+          <span class="name">${d.name}</span>
+          <div class="hint">${d.tag}</div>
+        </button>`).join("");
+      document.querySelectorAll(".design-item").forEach(btn => {
+        btn.addEventListener("click", () => {
+          current = +btn.dataset.id;
+          showAll = false;
+          document.getElementById("btn-all").textContent = "Показать все";
+          render();
+        });
+      });
+    }
+
+    function renderStage() {
+      const stage = document.getElementById("stage");
+      if (showAll) {
+        stage.style.flexDirection = "column";
+        stage.style.gap = "40px";
+        stage.innerHTML = DESIGNS.map(d =>
+          `<div style="width:100%;text-align:center;color:#a1a1aa;font-size:13px;margin-bottom:8px">${d.id}. ${d.name} — ${d.tag}</div>` + appHtml(d)
+        ).join("");
+      } else {
+        stage.style.flexDirection = "";
+        stage.style.gap = "";
+        const d = DESIGNS.find(x => x.id === current);
+        stage.innerHTML = appHtml(d);
+        document.getElementById("current-label").textContent = `${d.id}. ${d.name}`;
+        document.getElementById("current-tag").textContent = d.tag;
+      }
+    }
+
+    function render() {
+      renderNav();
+      renderStage();
+    }
+
+    document.getElementById("btn-pick").addEventListener("click", () => {
+      const d = DESIGNS.find(x => x.id === current);
+      localStorage.setItem("opcua_design_2026", current);
+      alert(`Выбран дизайн ${d.id}: ${d.name}\n\nНапишите в чат: «Применить дизайн 2026 №${d.id}»`);
+    });
+
+    document.getElementById("btn-all").addEventListener("click", () => {
+      showAll = !showAll;
+      document.getElementById("btn-all").textContent = showAll ? "Один дизайн" : "Показать все";
+      renderStage();
+    });
+
+    render();
+  </script>
+</body>
+</html>
