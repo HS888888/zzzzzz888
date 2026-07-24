@@ -1,0 +1,128 @@
+OPC UA Gateway — готовая сборка для Astra Linux SE 1.8
+========================================================
+
+Версия: astra-linux-4 (GitHub Release)
+Платформа: Astra Linux SE 1.8, x86_64
+Python на целевой машине: НЕ нужен
+
+GitHub: https://github.com/HS888888/zzzzzz888/releases/latest
+
+
+1. ЧТО ЛЕЖИТ НА ФЛЕШКЕ (готовая поставка)
+-----------------------------------------
+
+  opcua-gateway-astra-se18-x86_64.tar.gz       — программа (~228 МБ)
+  opcua-gateway-astra-se18-x86_64.tar.gz.sha256 — контрольная сумма
+  ГОТОВАЯ_СБОРКА.txt                           — эта инструкция
+  ЗАПУСК.txt                                   — краткая шпаргалка
+
+На флешку кладём ТОЛЬКО эти файлы. Исходники и install-скрипты не нужны.
+
+
+2. СТРУКТУРА ПРОГРАММЫ (после распаковки)
+-----------------------------------------
+
+  OPC_UA_Gateway/
+    OPC_UA_Gateway     — исполняемый файл (главная программа)
+    _internal/         — библиотеки Qt, PySide6, asyncua (.so) — НЕ удалять
+    Запуск.sh          — скрипт запуска
+    README.txt         — краткая справка для пользователя
+    settings.json      — настройки (создаётся кнопкой «Сохранить»)
+    logs/
+      gateway.log      — журнал работы шлюза
+
+
+3. УСТАНОВКА БИБЛИОТЕК НА ASTRA (один раз на ПК)
+------------------------------------------------
+
+Перед первым запуском на новой Astra нужны системные пакеты для Qt WebEngine.
+Python, pip, venv ставить НЕ нужно.
+
+Команды (от root, в терминале):
+
+  sudo apt-get update
+  sudo apt-get install -y \
+    ca-certificates curl wget \
+    libgl1 libglib2.0-0 libxkbcommon-x11-0 libxcb-cursor0 \
+    libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 \
+    libxcb-shape0 libxcb-xfixes0 libxcb-xinerama0 libxcb-randr0 \
+    libnss3 libasound2 libxdamage1 libxrandr2 libgbm1 libx11-xcb1 \
+    libxcomposite1 libxtst6 libxss1 libfontconfig1 libdbus-1-3 \
+    libegl1 libopengl0
+
+Это те же пакеты, что ставит install_runtime_deps.sh из проекта.
+На уже настроенном ПК (power@astra) — повторять не нужно.
+
+
+4. УСТАНОВКА С ФЛЕШКИ (проверенный способ)
+------------------------------------------
+
+  а) Скопировать файлы с флешки на Astra, например в:
+     /home/power/Desktops/Desktop1/
+
+  б) В терминале (НЕ двойной щелчок по .sh):
+
+     cd /home/power/Desktops/Desktop1
+     sha256sum -c opcua-gateway-astra-se18-x86_64.tar.gz.sha256
+     tar xzf opcua-gateway-astra-se18-x86_64.tar.gz
+     chmod +x OPC_UA_Gateway/Запуск.sh OPC_UA_Gateway/OPC_UA_Gateway
+     cd OPC_UA_Gateway
+     ./Запуск.sh
+
+  в) В окне программы:
+     — настроить ПЛК и шлюз (клик по блокам на схеме)
+     — «Сохранить»  →  появится settings.json
+     — «Запуск»     →  опрос ПЛК и локальный OPC UA сервер
+
+
+5. СЕТЬ И ПОРТЫ
+---------------
+
+  ПЛК (OPC UA):           порт 4840  (opc.tcp)
+  Локальный шлюз (SCADA):  порт 4841  (настраивается в программе)
+
+  Пример из рабочей конфигурации:
+    ПЛК1: 192.168.1.77:4840
+    ПЛК2: 192.168.1.11:4840
+    ПЛК3: 192.168.1.12:4840
+    Шлюз: 192.168.1.82:4841
+
+  Проверка порта шлюза:
+    ss -tlnp | grep 4841
+
+
+6. ЖУРНАЛ И ДИАГНОСТИКА
+-----------------------
+
+  Журнал шлюза:     OPC_UA_Gateway/logs/gateway.log
+  Запуск с логом:   ./OPC_UA_Gateway 2>&1 | tee run.log
+
+  Кнопка «Журнал» в программе — просмотр событий GUI.
+
+
+7. КАК СОБИРАЛИ ЭТУ ВЕРСИЮ (для разработчика)
+---------------------------------------------
+
+  — Исходники: репозиторий на GitHub HS888888/zzzzzz888
+  — Сборка: GitHub Actions, workflow «Build Astra Linux bundle»
+  — Release: astra-linux-4
+  — Скачано на Windows в папку:
+    C:\Users\HS\Desktop\OPC_UA_Gateway_для_флешки\
+  — Перенос на Astra: USB-флешка, распаковка tar.gz
+
+  Альтернатива (если есть интернет на Astra):
+    sudo bash install-opc-gateway.sh
+  (скрипт в репозитории, не на флешке)
+
+
+8. ВАЖНЫЕ ЗАМЕЧАНИЯ
+-------------------
+
+  • Не запускать .sh двойным щелчком — только через терминал: bash или ./Запуск.sh
+  • После копирования с Windows-флешки: sed -i 's/\r$//' *.sh  (если execve error)
+  • Папку _internal не переименовывать и не удалять
+  • Передача на другой ПК: вся папка OPC_UA_Gateway или архив tar.gz
+
+
+Дата документа: 2026-07-24
+Статус: рабочая готовая сборка (проверено на Astra, power@192.168.1.82)

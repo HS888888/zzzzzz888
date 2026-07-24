@@ -81,6 +81,35 @@ def get_variant_type(type_name: str) -> ua.VariantType:
         ) from exc
 
 
+INTEGER_VARIANT_TYPES = frozenset(
+    {
+        ua.VariantType.SByte,
+        ua.VariantType.Byte,
+        ua.VariantType.Int16,
+        ua.VariantType.UInt16,
+        ua.VariantType.Int32,
+        ua.VariantType.UInt32,
+        ua.VariantType.Int64,
+        ua.VariantType.UInt64,
+    }
+)
+
+FLOAT_VARIANT_TYPES = frozenset({ua.VariantType.Float, ua.VariantType.Double})
+
+
+def coerce_value(value: Any, variant_type: ua.VariantType) -> Any:
+    """Convert a remote PLC value to the local gateway variable type."""
+    if variant_type == ua.VariantType.Boolean:
+        return bool(value)
+    if variant_type in INTEGER_VARIANT_TYPES:
+        return int(value)
+    if variant_type in FLOAT_VARIANT_TYPES:
+        return float(value)
+    if variant_type == ua.VariantType.String:
+        return str(value)
+    return value
+
+
 def build_node_id(node_id: str | dict[str, Any]) -> str:
     """
     Build a NodeId string.
@@ -113,6 +142,7 @@ class OpcUaGateway:
         self.server = Server()
         self.namespace_index: int | None = None
         self.local_variables: dict[str, Any] = {}
+        self.local_variable_types: dict[str, ua.VariantType] = {}
         self._remote_tasks: list[asyncio.Task[None]] = []
         self._stop_event = asyncio.Event()
         self._status_lock = threading.Lock()
@@ -195,6 +225,7 @@ class OpcUaGateway:
             await variable_node.set_writable(False)
 
             self.local_variables[node_id] = variable_node
+            self.local_variable_types[node_id] = variant_type
             logger.info(
                 "Создана локальная переменная %s (%s, %s)",
                 node_id,
@@ -213,8 +244,17 @@ class OpcUaGateway:
             logger.error("Локальная переменная «%s» не найдена в конфигурации", local_node_id)
             return
 
-        await variable_node.write_value(value)
-        logger.debug("Обновлено %s = %r", local_node_id, value)
+        variant_type = self.local_variable_types.get(local_node_id)
+        if variant_type is None:
+            logger.error(
+                "Тип локальной переменной «%s» не найден в конфигурации",
+                local_node_id,
+            )
+            return
+
+        coerced = coerce_value(value, variant_type)
+        await variable_node.write_value(coerced)
+        logger.debug("Обновлено %s = %r", local_node_id, coerced)
 
     async def _read_remote_server_loop(self, remote_config: dict[str, Any]) -> None:
         """Poll one remote OPC UA server (PLC)."""
