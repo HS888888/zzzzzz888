@@ -335,7 +335,9 @@ def plc_has_fresh_data(entry: dict[str, Any], stale_limit: float) -> bool:
 
 def plc_stale_limit(polling_interval: float, node_count: int) -> float:
     """How long to wait before marking a PLC as stale (depends on tag count)."""
-    return max(polling_interval * 3 + node_count * 2.0, 20.0)
+    # A long tag list must not keep the block green for many minutes after the link drops.
+    weighed = polling_interval * 3 + min(node_count, 40) * 0.5
+    return max(weighed, 8.0)
 
 
 def plc_is_configured(server: dict[str, Any] | None) -> bool:
@@ -371,7 +373,7 @@ def evaluate_diagram_status(
         entry = find_plc_status_entry(plc_entries, url)
         stale_limit = plc_stale_limit(polling_interval, len(nodes))
 
-        if not running:
+        if not running or not entry.get("connected"):
             plcs_ok.append(False)
             continue
 
@@ -1712,7 +1714,7 @@ class PlcSettingsDialog(SettingsDialog):
         item.setData(0, self._ROLE_NODE_CLASS, node.get("node_class", ""))
         item.setData(0, self._ROLE_BROWSE_NAME, node.get("browse_name", ""))
         item.setData(0, self._ROLE_LOADED, False)
-        if node.get("has_children") and node.get("node_class") != "Variable":
+        if node.get("has_children"):
             item.setChildIndicatorPolicy(QTreeWidgetItem.ChildIndicatorPolicy.ShowIndicator)
         self._sync_tree_branch_label(item)
         return item

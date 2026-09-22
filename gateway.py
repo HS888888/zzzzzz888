@@ -74,6 +74,28 @@ def setup_logging(level: str = "INFO", log_dir: Path | str | None = None) -> Pat
     return log_path
 
 
+def _is_connection_error(exc: BaseException) -> bool:
+    """True when a read failed because the PLC session itself is gone."""
+    text = str(exc).lower()
+    markers = (
+        "disconnect",
+        "connection",
+        "closed",
+        "timeout",
+        "sending request",
+        "badsession",
+        "badconnection",
+        "badsecurechannel",
+        "badnotconnected",
+        "winerror",
+        "10054",
+        "10053",
+        "10060",
+        "1225",
+    )
+    return any(marker in text for marker in markers)
+
+
 def get_variant_type(type_name: str) -> ua.VariantType:
     """Resolve VariantType from a configuration string."""
     try:
@@ -173,7 +195,12 @@ class OpcUaGateway:
             }
 
     def _set_plc_status(
-        self, url: str, *, connected: bool, read_ok: bool = False
+        self,
+        url: str,
+        *,
+        connected: bool,
+        read_ok: bool = False,
+        clear_read: bool = False,
     ) -> None:
         with self._status_lock:
             entry = self._status["plcs"].setdefault(
@@ -182,7 +209,7 @@ class OpcUaGateway:
             entry["connected"] = connected
             if read_ok:
                 entry["last_read"] = time.monotonic()
-            elif not connected:
+            elif not connected or clear_read:
                 entry["last_read"] = None
 
     def _reset_status(self) -> None:
@@ -277,6 +304,8 @@ class OpcUaGateway:
                     self._set_plc_status(url, connected=True)
 
                     while not self._stop_event.is_set():
+                        any_ok = False
+                        connection_lost = False
                         for node_config in nodes:
                             remote_node_id = build_node_id(node_config["node_id"])
                             local_node_id = node_config["local_node_id"]
@@ -284,6 +313,7 @@ class OpcUaGateway:
                             try:
                                 node = client.get_node(remote_node_id)
                                 value = await node.read_value()
+                                any_ok = True
                                 self._set_plc_status(url, connected=True, read_ok=True)
                                 await self._update_local_variable(local_node_id, value)
                             except Exception as exc:
@@ -293,6 +323,14 @@ class OpcUaGateway:
                                     name,
                                     exc,
                                 )
+                                if _is_connection_error(exc):
+                                    connection_lost = True
+                                    break
+
+                        if connection_lost:
+                            raise ConnectionError(f"Соединение с {name} потеряно во время опроса")
+                        if nodes and not any_ok:
+                            self._set_plc_status(url, connected=True, clear_read=True)
 
                         try:
                             await asyncio.wait_for(

@@ -14,12 +14,6 @@ logger = logging.getLogger(__name__)
 
 BROWSE_TIMEOUT_SEC = 30.0
 
-CONTAINER_CLASSES = {
-    ua.NodeClass.Object,
-    ua.NodeClass.ObjectType,
-    ua.NodeClass.View,
-}
-
 
 @dataclass
 class BrowseNode:
@@ -33,36 +27,79 @@ class BrowseNode:
         return asdict(self)
 
 
-async def browse_children(client: Client, node_id: str) -> list[BrowseNode]:
-    """Return direct children of an OPC UA node (single Browse request)."""
+BROWSE_PAGE_LIMIT = 100
+
+
+def _reference_to_browse_node(ref: Any) -> BrowseNode | None:
+    try:
+        node_class_val = ref.NodeClass
+        node_class = ua.NodeClass(node_class_val) if isinstance(node_class_val, int) else node_class_val
+        browse_name = ref.BrowseName.Name if ref.BrowseName else ""
+        display_name = ref.DisplayName.Text if ref.DisplayName else browse_name
+        child_id = ref.NodeId.to_string()
+        # Folders and array/struct variables (AI, AI[7]) must stay expandable.
+        # Methods have no tag children.
+        has_children = node_class != ua.NodeClass.Method
+        return BrowseNode(
+            node_id=child_id,
+            browse_name=browse_name,
+            display_name=display_name,
+            node_class=node_class.name,
+            has_children=has_children,
+        )
+    except Exception as exc:
+        logger.debug("Skip browse reference %s: %s", ref, exc)
+        return None
+
+
+async def _browse_references(client: Client, node_id: str) -> list[Any]:
+    """Read every child, following Browse continuation points from the PLC."""
     node = client.get_node(node_id)
-    results = await asyncio.wait_for(client.browse_nodes([node]), timeout=BROWSE_TIMEOUT_SEC)
-    browse_result = results[0][1]
+    description = ua.BrowseDescription()
+    description.NodeId = node.nodeid
+    description.ResultMask = ua.BrowseResultMask.All
+
+    parameters = ua.BrowseParameters()
+    parameters.View = ua.ViewDescription()
+    parameters.RequestedMaxReferencesPerNode = 0
+    parameters.NodesToBrowse = [description]
+
+    results = await asyncio.wait_for(client.uaclient.browse(parameters), timeout=BROWSE_TIMEOUT_SEC)
+    browse_result = results[0]
     if browse_result.StatusCode.is_bad():
         raise RuntimeError(f"Browse failed: {browse_result.StatusCode}")
 
-    result: list[BrowseNode] = []
-    for ref in browse_result.References or []:
-        try:
-            node_class_val = ref.NodeClass
-            node_class = ua.NodeClass(node_class_val) if isinstance(node_class_val, int) else node_class_val
-            browse_name = ref.BrowseName.Name if ref.BrowseName else ""
-            display_name = ref.DisplayName.Text if ref.DisplayName else browse_name
-            child_id = ref.NodeId.to_string()
-            has_children = node_class in CONTAINER_CLASSES or node_class == ua.NodeClass.Object
-            if node_class in (ua.NodeClass.Variable, ua.NodeClass.Method):
-                has_children = False
-            result.append(
-                BrowseNode(
-                    node_id=child_id,
-                    browse_name=browse_name,
-                    display_name=display_name,
-                    node_class=node_class.name,
-                    has_children=has_children,
-                )
+    references = list(browse_result.References or [])
+    pages = 0
+    while browse_result.ContinuationPoint and pages < BROWSE_PAGE_LIMIT:
+        pages += 1
+        next_parameters = ua.BrowseNextParameters()
+        next_parameters.ReleaseContinuationPoints = False
+        next_parameters.ContinuationPoints = [browse_result.ContinuationPoint]
+        next_results = await asyncio.wait_for(
+            client.uaclient.browse_next(next_parameters),
+            timeout=BROWSE_TIMEOUT_SEC,
+        )
+        browse_result = next_results[0]
+        if browse_result.StatusCode.is_bad():
+            logger.warning(
+                "BrowseNext остановился на %s: %s",
+                node_id,
+                browse_result.StatusCode,
             )
-        except Exception as exc:
-            logger.debug("Skip browse reference %s: %s", ref, exc)
+            break
+        references.extend(browse_result.References or [])
+    return references
+
+
+async def browse_children(client: Client, node_id: str) -> list[BrowseNode]:
+    """Return all direct children of an OPC UA node."""
+    references = await _browse_references(client, node_id)
+    result: list[BrowseNode] = []
+    for ref in references:
+        item = _reference_to_browse_node(ref)
+        if item is not None:
+            result.append(item)
     result.sort(key=lambda item: item.browse_name.lower())
     return result
 
@@ -152,9 +189,10 @@ def _child_name_matches(child: BrowseNode, name: str) -> bool:
 
 
 def _should_descend_into(child: BrowseNode) -> bool:
-    if not child.has_children:
+    # Name search stays on folders. Array elements are opened in the browse tree.
+    if child.node_class == "Variable" or child.node_class in SKIP_DESCENT_NODE_CLASSES:
         return False
-    return child.node_class not in SKIP_DESCENT_NODE_CLASSES
+    return child.has_children
 
 
 async def _navigate_by_path(
