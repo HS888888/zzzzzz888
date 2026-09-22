@@ -92,7 +92,7 @@ if errorlevel 1 (
 
 echo.
 
-echo [4/6] Building dist\OPC_UA_Gateway\ (may take a few minutes)...
+echo [4/6] Building dist\MS SERVICE\ (may take a few minutes)...
 
 set "BUILD_OK=0"
 
@@ -104,7 +104,7 @@ for /L %%I in (1,1,5) do (
 
         python -m PyInstaller --noconfirm --clean build_exe.spec
 
-        if not errorlevel 1 if exist "dist\OPC_UA_Gateway\OPC_UA_Gateway.exe" set "BUILD_OK=1"
+        if not errorlevel 1 if exist "dist\MS SERVICE\MS SERVICE.exe" set "BUILD_OK=1"
 
     )
 
@@ -124,13 +124,13 @@ if "!BUILD_OK!"=="0" (
 
 echo.
 
-echo [5/6] Copying to production\OPC_UA_Gateway\ in project folder...
+echo [5/6] Copying to production\MS SERVICE\ in project folder...
 
-if exist "%PROJECT_ROOT%\production\OPC_UA_Gateway" rmdir /s /q "%PROJECT_ROOT%\production\OPC_UA_Gateway"
+if exist "%PROJECT_ROOT%\production\MS SERVICE" rmdir /s /q "%PROJECT_ROOT%\production\MS SERVICE"
 
-mkdir "%PROJECT_ROOT%\production\OPC_UA_Gateway"
+mkdir "%PROJECT_ROOT%\production\MS SERVICE"
 
-xcopy "dist\OPC_UA_Gateway\*" "%PROJECT_ROOT%\production\OPC_UA_Gateway\" /E /I /Y >nul
+xcopy "dist\MS SERVICE\*" "%PROJECT_ROOT%\production\MS SERVICE\" /E /I /Y >nul
 
 if errorlevel 1 (
 
@@ -160,15 +160,15 @@ echo.
 
 echo Production folder:
 
-echo   %PROJECT_ROOT%\production\OPC_UA_Gateway\
+echo   %PROJECT_ROOT%\production\MS SERVICE\
 
 echo.
 
-echo   OPC_UA_Gateway.exe  - launch application
+echo   MS SERVICE.exe      - launch application
 
 echo   _internal\          - libraries (DLL)
 
-echo   Запуск.bat          - shortcut for end user
+echo   Запуск.vbs          - shortcut without a console window
 
 echo.
 

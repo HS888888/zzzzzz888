@@ -124,7 +124,7 @@ FONT_UI = "Segoe UI"
 FONT_MONO = "Consolas"
 
 
-APP_NAME = "OPC UA Gateway"
+APP_NAME = "MS SERVICE"
 AUTO_RESTART_DELAY_MS = 5000
 AUTO_RESTART_RETRY_MS = 15000
 
@@ -140,15 +140,19 @@ def _set_windows_app_id() -> None:
     try:
         import ctypes
 
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("OPCUA.Gateway.Desktop.1")
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("MS.SERVICE.Desktop.1")
     except (AttributeError, OSError):
         pass
 
 
 def _build_app_icon() -> QIcon:
-    icon_path = resource_path("app_icon.ico")
-    if icon_path.exists():
-        return QIcon(str(icon_path))
+    for name in ("app_icon.ico", "app_icon.png"):
+        icon_path = resource_path(name)
+        if not icon_path.exists():
+            continue
+        icon = QIcon(str(icon_path))
+        if not icon.isNull():
+            return icon
 
     size = 64
     pixmap = QPixmap(size, size)
@@ -554,10 +558,14 @@ class LogBufferHandler(logging.Handler):
             self.handleError(record)
 
 
-class GatewayService:
+class GatewayService(QObject):
     """Run OpcUaGateway in a background thread with its own asyncio loop."""
 
+    thread_exited = Signal(bool)
+    stop_finished = Signal()
+
     def __init__(self) -> None:
+        super().__init__()
         self._gateway: OpcUaGateway | None = None
         self._thread: threading.Thread | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -566,12 +574,14 @@ class GatewayService:
         self._running = False
         self._stopping = False
         self._user_stop_requested = False
-        self._exit_callback: Callable[[bool], None] | None = None
+        self._stop_done_callback: Callable[[], None] | None = None
         self._lock = threading.Lock()
 
-    def set_exit_callback(self, callback: Callable[[bool], None] | None) -> None:
-        """Called when gateway thread exits. Argument True = unexpected crash/stop."""
-        self._exit_callback = callback
+    def take_stop_callback(self) -> Callable[[], None] | None:
+        with self._lock:
+            callback = self._stop_done_callback
+            self._stop_done_callback = None
+            return callback
 
     @property
     def running(self) -> bool:
@@ -610,20 +620,24 @@ class GatewayService:
         """Request gateway stop without blocking the caller."""
         with self._lock:
             if not self._running:
-                if done_callback is not None:
-                    done_callback()
+                pending = done_callback
+            elif self._stopping:
                 return
-            if self._stopping:
-                return
-            self._user_stop_requested = True
-            self._stopping = True
+            else:
+                self._user_stop_requested = True
+                self._stopping = True
+                self._stop_done_callback = done_callback
+                pending = None
+        if pending is not None:
+            pending()
+            return
 
         def _stop_worker() -> None:
             try:
                 self._logs.append("[GUI] Остановка шлюза...")
                 loop = self._loop
                 gateway = self._gateway
-                if loop is not None and gateway is not None:
+                if loop is not None and gateway is not None and not loop.is_closed():
                     try:
                         future = asyncio.run_coroutine_threadsafe(
                             gateway.stop(), loop
@@ -645,8 +659,7 @@ class GatewayService:
                     self._gateway = None
                     self._thread = None
                     self._loop = None
-                if done_callback is not None:
-                    done_callback()
+                self.stop_finished.emit()
 
         threading.Thread(
             target=_stop_worker,
@@ -700,12 +713,22 @@ class GatewayService:
             self._gateway = None
             self._thread = None
             try:
-                loop.close()
+                pending = [task for task in asyncio.all_tasks(loop) if not task.done()]
+                for task in pending:
+                    task.cancel()
+                if pending and not loop.is_closed():
+                    loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+            except Exception:
+                pass
+            try:
+                if not loop.is_closed():
+                    loop.close()
             finally:
                 self._loop = None
-            callback = self._exit_callback
-            if callback is not None:
-                callback(unexpected)
+            try:
+                self.thread_exited.emit(unexpected)
+            except RuntimeError:
+                pass
 
 
 def _app_stylesheet() -> str:
@@ -2406,11 +2429,8 @@ class GatewayApp(QMainWindow):
         self._log_file_path = setup_logging("INFO", log_dir)
         logger.info("Файл журнала: %s", self._log_file_path)
         self.gateway_service = GatewayService()
-        self.gateway_service.set_exit_callback(
-            lambda unexpected: self._schedule_main(
-                lambda u=unexpected: self._on_gateway_thread_exit(u)
-            )
-        )
+        self.gateway_service.thread_exited.connect(self._on_gateway_thread_exit)
+        self.gateway_service.stop_finished.connect(self._run_stop_callback)
         self.log_offset = 0
         self.unsaved = True
         self._closing = False
@@ -2729,13 +2749,18 @@ class GatewayApp(QMainWindow):
         self._set_status_badge("Остановка…", COLORS["text_muted"])
         self._set_action_hint("Остановка шлюза…", "muted")
         self._push_ui_state()
-        self.gateway_service.stop(done_callback=lambda: self._schedule_main(self._on_gateway_stopped))
+        self.gateway_service.stop(done_callback=self._on_gateway_stopped)
 
     def _on_gateway_stopped(self) -> None:
         self._set_status_badge("Готов", "#86EFAC")
         self._set_action_hint("Шлюз остановлен — можно настраивать блоки", "success")
         self._sync_start_button()
         self._update_diagram()
+
+    def _run_stop_callback(self) -> None:
+        callback = self.gateway_service.take_stop_callback()
+        if callback is not None:
+            callback()
 
     def _on_gateway_thread_exit(self, unexpected: bool) -> None:
         """Handle gateway thread exit; auto-restart on unexpected stop."""
@@ -2838,7 +2863,7 @@ class GatewayApp(QMainWindow):
             self._closing = True
             event.ignore()
             self._set_status_badge("Остановка…", COLORS["text_muted"])
-            self.gateway_service.stop(done_callback=lambda: self._schedule_main(self.close))
+            self.gateway_service.stop(done_callback=self.close)
             return
 
         event.accept()
@@ -2850,7 +2875,7 @@ class GatewayApp(QMainWindow):
         self.activateWindow()
 
 
-SINGLE_INSTANCE_KEY = "OPC_UA_Gateway_Gui"
+SINGLE_INSTANCE_KEY = "MS_SERVICE_Gui"
 
 
 def _notify_running_instance() -> bool:
@@ -2909,7 +2934,7 @@ def main() -> None:
         if _notify_running_instance():
             QMessageBox.information(
                 None,
-                "OPC UA Gateway",
+                "MS SERVICE",
                 "Программа уже запущена.",
             )
             sys.exit(0)

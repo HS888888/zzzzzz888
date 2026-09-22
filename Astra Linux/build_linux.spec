@@ -44,6 +44,8 @@ hiddenimports += _collect_submodules("asyncua", "warn once")[0]
 
 datas = collect_data_files("asyncua", include_py_files=True)
 datas.append((str(ROOT / "paper_ops_app.html"), "."))
+datas.append((str(ROOT / "app_icon.ico"), "."))
+datas.append((str(ROOT / "app_icon.png"), "."))
 
 a = Analysis(
     [str(ROOT / "app.py")],

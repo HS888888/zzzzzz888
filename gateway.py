@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import sys
 import threading
 import time
 from logging.handlers import RotatingFileHandler
@@ -54,9 +55,12 @@ def setup_logging(level: str = "INFO", log_dir: Path | str | None = None) -> Pat
     root.handlers.clear()
     root.setLevel(log_level)
 
-    console = logging.StreamHandler()
-    console.setFormatter(formatter)
-    root.addHandler(console)
+    # A windowed exe has no console. Writing to stderr there can attach
+    # a black terminal or fail when sys.stderr is None.
+    if sys.stderr is not None and not getattr(sys, "frozen", False):
+        console = logging.StreamHandler()
+        console.setFormatter(formatter)
+        root.addHandler(console)
 
     file_handler = RotatingFileHandler(
         log_path,
@@ -202,7 +206,7 @@ class OpcUaGateway:
 
         await self.server.init()
         self.server.set_endpoint(endpoint)
-        self.server.set_server_name("OPC UA Gateway")
+        self.server.set_server_name("MS SERVICE")
 
         self.namespace_index = await self.server.register_namespace(namespace_uri)
         idx = self.namespace_index

@@ -1,4 +1,3 @@
 @echo off
-chcp 65001 >nul
-cd /d "%~dp0"
-start "" "OPC_UA_Gateway.exe"
+wscript //nologo "%~dp0Запуск.vbs"
+exit /b 0

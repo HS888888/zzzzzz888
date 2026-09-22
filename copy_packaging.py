@@ -1,4 +1,4 @@
-"""Copy user-facing packaging files into production/OPC_UA_Gateway/."""
+"""Copy user-facing packaging files into production/MS SERVICE/."""
 from __future__ import annotations
 
 import shutil
@@ -6,14 +6,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 PKG = ROOT / "production" / "packaging"
-OUT = ROOT / "production" / "OPC_UA_Gateway"
+OUT = ROOT / "production" / "MS SERVICE"
 
-launch = PKG / "Запуск.bat"
-readme = PKG / "README.txt"
-
-if launch.is_file():
-    shutil.copy2(launch, OUT / launch.name)
-if readme.is_file():
-    shutil.copy2(readme, OUT / "README.txt")
+for name in ("Запуск.bat", "Запуск.vbs", "README.txt"):
+    src = PKG / name
+    if src.is_file():
+        shutil.copy2(src, OUT / src.name)
 
 print(f"Updated: {OUT}")

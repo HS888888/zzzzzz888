@@ -1,7 +1,7 @@
 OPC UA Gateway — готовая сборка для Astra Linux SE 1.8
 ========================================================
 
-Версия: astra-linux-4 (GitHub Release)
+Версия: astra-linux-5 (GitHub Release)
 Платформа: Astra Linux SE 1.8, x86_64
 Python на целевой машине: НЕ нужен
 
@@ -105,7 +105,7 @@ Python, pip, venv ставить НЕ нужно.
 
   — Исходники: репозиторий на GitHub HS888888/zzzzzz888
   — Сборка: GitHub Actions, workflow «Build Astra Linux bundle»
-  — Release: astra-linux-4
+  — Release: astra-linux-5
   — Скачано на Windows в папку:
     C:\Users\HS\Desktop\OPC_UA_Gateway_для_флешки\
   — Перенос на Astra: USB-флешка, распаковка tar.gz

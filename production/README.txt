@@ -10,12 +10,12 @@ Production-сборка OPC UA Gateway
 
 3. Готовая папка:
 
-   production\OPC_UA_Gateway\
+   production\MS SERVICE\
 
    Содержимое:
-   - OPC_UA_Gateway.exe   — программа
+   - MS SERVICE.exe       — программа
    - _internal\           — все библиотеки (DLL, PySide6, asyncua…)
-   - Запуск.bat           — для пользователя
+   - Запуск.vbs           — запуск без окна терминала
    - README.txt           — инструкция для пользователя
 
 4. Скопируйте всю папку production\OPC_UA_Gateway\ на другой ПК

@@ -45,6 +45,8 @@ hiddenimports += _collect_submodules("asyncua", "warn once")[0]
 
 datas = collect_data_files("asyncua", include_py_files=True)
 datas.append((str(ROOT / "paper_ops_app.html"), "."))
+datas.append((str(ROOT / "app_icon.ico"), "."))
+datas.append((str(ROOT / "app_icon.png"), "."))
 # PySide6 / Qt WebEngine binaries and resources are collected by PyInstaller hooks
 # when analyzing gui_app imports (do not bundle all of PySide6 — breaks on Python 3.14).
 
@@ -71,7 +73,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="OPC_UA_Gateway",
+    name="MS SERVICE",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -82,7 +84,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=None,
+    icon=str(ROOT / "app_icon.ico"),
 )
 
 coll = COLLECT(
@@ -93,5 +95,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name="OPC_UA_Gateway",
+    name="MS SERVICE",
 )
