@@ -53,7 +53,8 @@ from config_manager import (
     DEFAULT_RECONNECT_INTERVAL,
     auto_create_local_variables,
     build_config_dict,
-    load_config_or_default,
+    default_config,
+    load_config,
     local_server_url_from_port,
     parse_local_port,
     save_config,
@@ -476,6 +477,29 @@ def payload_to_config(payload: dict[str, Any]) -> dict[str, Any]:
         reconnect_interval=reconnect,
         auto_variables=False,
     )
+
+
+def settings_can_autostart(path: Path) -> bool:
+    """True when settings.json exists and is complete enough to start the gateway."""
+    if not path.is_file():
+        return False
+    try:
+        raw = path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return False
+    if not raw:
+        return False
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return False
+    if not isinstance(data, dict) or not data:
+        return False
+    try:
+        payload_to_config(config_to_payload(data))
+    except (TypeError, ValueError):
+        return False
+    return True
 
 
 def config_to_payload(config: dict[str, Any]) -> dict[str, Any]:
@@ -2435,6 +2459,8 @@ class GatewayApp(QMainWindow):
         self.gateway_service.stop_finished.connect(self._run_stop_callback)
         self.log_offset = 0
         self.unsaved = True
+        self._autostart_pending = False
+        self._empty_settings_notice = False
         self._closing = False
         self._ui_ready = False
         self._log_lines: list[str] = []
@@ -2533,6 +2559,12 @@ class GatewayApp(QMainWindow):
             return
         self._ui_ready = True
         self._push_ui_state()
+        if self._autostart_pending:
+            self._autostart_pending = False
+            QTimer.singleShot(0, lambda: self._start_gateway(skip_save_check=True))
+        elif self._empty_settings_notice:
+            self._empty_settings_notice = False
+            QTimer.singleShot(0, self._show_empty_settings_notice)
 
     def _build_ui_state(self) -> dict[str, Any]:
         block_status = self._build_diagram_status()
@@ -2671,8 +2703,28 @@ class GatewayApp(QMainWindow):
         self._log_lines.clear()
         self.log_offset = 0
 
+    def _show_empty_settings_notice(self) -> None:
+        QMessageBox.information(
+            self,
+            "settings.json пустой",
+            "Файл settings.json пустой или его нет.\n\n"
+            "Настройте блоки на схеме, нажмите «Сохранить», затем «Запуск».",
+        )
+
     def _load_config(self) -> None:
-        config = load_config_or_default(self.config_path)
+        can_start = settings_can_autostart(self.config_path)
+        if can_start:
+            config = load_config(self.config_path)
+        else:
+            config = default_config()
+            if self.config_path.is_file():
+                try:
+                    loaded_raw = load_config(self.config_path)
+                    if isinstance(loaded_raw, dict):
+                        config = loaded_raw
+                except (OSError, json.JSONDecodeError, TypeError, ValueError):
+                    config = default_config()
+
         loaded = config_to_payload(config)
         servers = loaded.get("remote_servers", [])
         while len(servers) < 3:
@@ -2680,15 +2732,19 @@ class GatewayApp(QMainWindow):
         loaded["remote_servers"] = servers[:3]
         self.payload.update(loaded)
 
-        if self.config_path.exists():
+        if can_start:
+            self._mark_saved()
+            self._autostart_pending = True
             self._append_log(
-                f"[GUI] Загружены настройки: {self.config_path.name} "
-                f"(нажмите «Сохранить» перед запуском)"
+                f"[GUI] {self.config_path.name} найден — шлюз запустится сам, "
+                "без кнопок «Сохранить» и «Запуск»"
             )
         else:
+            self.unsaved = True
+            self._empty_settings_notice = True
             self._append_log(
-                f"[GUI] {self.config_path.name} не найден — значения по умолчанию "
-                f"(сохраните перед запуском)"
+                f"[GUI] {self.config_path.name} пустой — настройте, "
+                "нажмите «Сохранить», затем «Запуск»"
             )
 
         self._update_diagram()
