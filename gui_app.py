@@ -10,6 +10,8 @@ import socket
 import sys
 import threading
 import time
+import traceback
+from concurrent.futures import Future, TimeoutError as FutureTimeout
 from collections import deque
 from pathlib import Path
 from typing import Any, Callable
@@ -585,23 +587,38 @@ class LogBufferHandler(logging.Handler):
 
 
 class GatewayService(QObject):
-    """Run OpcUaGateway in a background thread with its own asyncio loop."""
+    """Run OpcUaGateway on one long-lived asyncio loop.
+
+    The loop stays open between Stop and Start. Closing it and opening
+    another one drops the OPC port late and can kill the process.
+    """
 
     thread_exited = Signal(bool)
     stop_finished = Signal()
+    error_occurred = Signal(str)
 
     def __init__(self) -> None:
         super().__init__()
         self._gateway: OpcUaGateway | None = None
-        self._thread: threading.Thread | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
+        self._run_future: Future[None] | None = None
         self._logs: deque[str] = deque(maxlen=1000)
         self._log_handler: LogBufferHandler | None = None
         self._running = False
         self._stopping = False
         self._user_stop_requested = False
+        self._start_failed = False
         self._stop_done_callback: Callable[[], None] | None = None
         self._lock = threading.Lock()
+        self._loop_ready = threading.Event()
+        self._loop_thread = threading.Thread(
+            target=self._loop_main,
+            name="opcua-loop",
+            daemon=True,
+        )
+        self._loop_thread.start()
+        if not self._loop_ready.wait(timeout=10):
+            raise RuntimeError("Не удалось запустить цикл шлюза")
 
     def take_stop_callback(self) -> Callable[[], None] | None:
         with self._lock:
@@ -632,15 +649,17 @@ class GatewayService(QObject):
         with self._lock:
             if self._running or self._stopping:
                 raise RuntimeError("Шлюз уже запущен или останавливается")
+            loop = self._loop
+            if loop is None or loop.is_closed():
+                raise RuntimeError("Цикл шлюза недоступен")
             self._user_stop_requested = False
+            self._start_failed = False
             self._running = True
-            self._thread = threading.Thread(
-                target=self._thread_main,
-                args=(config,),
-                name="opcua-gateway",
-                daemon=True,
+            future = asyncio.run_coroutine_threadsafe(
+                self._run_gateway(config),
+                loop,
             )
-            self._thread.start()
+            self._run_future = future
 
     def stop(self, done_callback: Callable[[], None] | None = None) -> None:
         """Request gateway stop without blocking the caller."""
@@ -654,38 +673,100 @@ class GatewayService(QObject):
                 self._stopping = True
                 self._stop_done_callback = done_callback
                 pending = None
+                loop = self._loop
+                run_future = self._run_future
         if pending is not None:
             pending()
             return
 
+        stop_released = False
+        handed_off = False
+
+        def _finish_stop() -> None:
+            nonlocal stop_released
+            with self._lock:
+                if stop_released:
+                    return
+                stop_released = True
+                self._stopping = False
+                self._running = False
+                self._gateway = None
+            try:
+                self.stop_finished.emit()
+            except RuntimeError:
+                pass
+
         def _stop_worker() -> None:
+            nonlocal handed_off
             try:
                 self._logs.append("[GUI] Остановка шлюза...")
-                loop = self._loop
-                gateway = self._gateway
-                if loop is not None and gateway is not None and not loop.is_closed():
+                deadline = time.monotonic() + 45
+                gateway: OpcUaGateway | None = None
+                while time.monotonic() < deadline:
+                    gateway = self._gateway
+                    if gateway is not None or (run_future is not None and run_future.done()):
+                        break
+                    time.sleep(0.05)
+                if (
+                    loop is not None
+                    and gateway is not None
+                    and not loop.is_closed()
+                ):
                     try:
-                        future = asyncio.run_coroutine_threadsafe(
-                            gateway.stop(), loop
+                        stop_future = asyncio.run_coroutine_threadsafe(
+                            gateway.stop(),
+                            loop,
                         )
-                        future.result(timeout=30)
+                        stop_future.result(timeout=30)
                     except Exception as exc:
                         self._logs.append(f"[GUI] Ошибка остановки: {exc}")
-                thread = self._thread
-                if thread is not None and thread.is_alive():
-                    thread.join(timeout=35)
-                    if thread.is_alive():
+                        self.error_occurred.emit(f"Не удалось остановить шлюз:\n\n{exc}")
+                if run_future is not None:
+                    remaining = max(1.0, deadline - time.monotonic())
+                    try:
+                        run_future.result(timeout=remaining)
+                    except FutureTimeout:
                         self._logs.append(
-                            "[GUI] Предупреждение: поток шлюза не завершился вовремя"
+                            "[GUI] Шлюз ещё останавливается, запуск будет недоступен"
                         )
+                        self.error_occurred.emit(
+                            "Шлюз ещё останавливается. "
+                            "Кнопка «Запуск» включится, когда порт освободится."
+                        )
+                        _hand_off_wait()
+                        return
+                    except Exception as exc:
+                        self._logs.append(f"[GUI] Ошибка завершения шлюза: {exc}")
+                        self.error_occurred.emit(f"Шлюз остановился с ошибкой:\n\n{exc}")
             finally:
-                with self._lock:
-                    self._stopping = False
-                    self._running = False
-                    self._gateway = None
-                    self._thread = None
-                    self._loop = None
-                self.stop_finished.emit()
+                if not handed_off:
+                    if run_future is None or run_future.done():
+                        _finish_stop()
+                    else:
+                        self._logs.append(
+                            "[GUI] Остановка не завершилась, ждём освобождения порта"
+                        )
+                        _hand_off_wait()
+
+        def _hand_off_wait() -> None:
+            nonlocal handed_off
+            if handed_off or run_future is None:
+                return
+            handed_off = True
+
+            def _wait_release() -> None:
+                try:
+                    run_future.result()
+                except Exception as exc:
+                    self._logs.append(f"[GUI] Ошибка завершения шлюза: {exc}")
+                finally:
+                    _finish_stop()
+
+            threading.Thread(
+                target=_wait_release,
+                name="opcua-gateway-stop-wait",
+                daemon=True,
+            ).start()
 
         threading.Thread(
             target=_stop_worker,
@@ -710,47 +791,55 @@ class GatewayService(QObject):
             "plcs": {},
         }
 
-    def _thread_main(self, config: dict[str, Any]) -> None:
+    def _loop_main(self) -> None:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         self._loop = loop
+        self._loop_ready.set()
+        try:
+            loop.run_forever()
+        finally:
+            try:
+                if not loop.is_closed():
+                    loop.close()
+            except Exception:
+                logger.exception("Не удалось закрыть цикл шлюза")
+
+    async def _run_gateway(self, config: dict[str, Any]) -> None:
         log_handler = LogBufferHandler(self._logs)
         self._log_handler = log_handler
         logging.getLogger().addHandler(log_handler)
         self._logs.append("[GUI] Запуск шлюза...")
-
+        unexpected = False
         try:
+            if self._user_stop_requested:
+                return
             gateway = OpcUaGateway(config)
             self._gateway = gateway
-            loop.run_until_complete(gateway.start())
+            if self._user_stop_requested:
+                return
+            await gateway.start()
         except Exception as exc:
-            logger.error("Ошибка шлюза: %s", exc)
+            logger.exception("Ошибка шлюза")
             self._logs.append(f"[GUI] Ошибка шлюза: {exc}")
+            with self._lock:
+                self._start_failed = True
+            message = str(exc).strip() or exc.__class__.__name__
+            try:
+                self.error_occurred.emit(message)
+            except RuntimeError:
+                pass
         finally:
             self._logs.append("[GUI] Шлюз остановлен")
-            unexpected = False
             with self._lock:
-                unexpected = not self._user_stop_requested
+                unexpected = not self._user_stop_requested and not self._start_failed
                 self._running = False
+                self._gateway = None
+                self._run_future = None
             root_logger = logging.getLogger()
             if self._log_handler is not None:
                 root_logger.removeHandler(self._log_handler)
                 self._log_handler = None
-            self._gateway = None
-            self._thread = None
-            try:
-                pending = [task for task in asyncio.all_tasks(loop) if not task.done()]
-                for task in pending:
-                    task.cancel()
-                if pending and not loop.is_closed():
-                    loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-            except Exception:
-                pass
-            try:
-                if not loop.is_closed():
-                    loop.close()
-            finally:
-                self._loop = None
             try:
                 self.thread_exited.emit(unexpected)
             except RuntimeError:
@@ -2410,39 +2499,57 @@ class AppBridge(QObject):
 
     @Slot()
     def requestState(self) -> None:
-        self._app._push_ui_state()
+        try:
+            self._app._push_ui_state()
+        except Exception as exc:
+            self._report_slot_error("Ошибка интерфейса", exc)
+
+    def _report_slot_error(self, action: str, exc: Exception) -> None:
+        logger.exception("%s failed", action)
+        self._app._append_log(f"[GUI] {action}: {exc}")
+        QMessageBox.critical(self._app, "Ошибка", f"{action}:\n\n{exc}")
 
     @Slot()
     def startGateway(self) -> None:
         try:
             self._app._start_gateway()
         except Exception as exc:
-            logger.exception("startGateway failed")
-            self._app._append_log(f"[GUI] Ошибка запуска: {exc}")
+            self._report_slot_error("Ошибка запуска", exc)
 
     @Slot()
     def stopGateway(self) -> None:
         try:
             self._app._stop_gateway()
         except Exception as exc:
-            logger.exception("stopGateway failed")
-            self._app._append_log(f"[GUI] Ошибка остановки: {exc}")
+            self._report_slot_error("Ошибка остановки", exc)
 
     @Slot()
     def saveSettings(self) -> None:
-        self._app._save_settings()
+        try:
+            self._app._save_settings()
+        except Exception as exc:
+            self._report_slot_error("Ошибка сохранения", exc)
 
     @Slot()
     def clearLog(self) -> None:
-        self._app._clear_log()
+        try:
+            self._app._clear_log()
+        except Exception as exc:
+            self._report_slot_error("Ошибка журнала", exc)
 
     @Slot()
     def openLog(self) -> None:
-        self._app._open_log_journal()
+        try:
+            self._app._open_log_journal()
+        except Exception as exc:
+            self._report_slot_error("Ошибка журнала", exc)
 
     @Slot(str, int)
     def openBlock(self, kind: str, index: int) -> None:
-        self._app._on_block_click(kind, index if index >= 0 else None)
+        try:
+            self._app._on_block_click(kind, index if index >= 0 else None)
+        except Exception as exc:
+            self._report_slot_error("Ошибка блока", exc)
 
 
 class GatewayApp(QMainWindow):
@@ -2457,6 +2564,7 @@ class GatewayApp(QMainWindow):
         self.gateway_service = GatewayService()
         self.gateway_service.thread_exited.connect(self._on_gateway_thread_exit)
         self.gateway_service.stop_finished.connect(self._run_stop_callback)
+        self.gateway_service.error_occurred.connect(self._on_gateway_error)
         self.log_offset = 0
         self.unsaved = True
         self._autostart_pending = False
@@ -2815,6 +2923,18 @@ class GatewayApp(QMainWindow):
         self._sync_start_button()
         self._update_diagram()
 
+    def _on_gateway_error(self, message: str) -> None:
+        text = (message or "Неизвестная ошибка шлюза").strip()
+        self._append_log(f"[GUI] {text}")
+        self._set_status_badge("Ошибка", "#FCA5A5")
+        first_line = text.splitlines()[0][:180]
+        self._set_action_hint(first_line, "danger")
+        self._sync_start_button()
+        self._update_diagram()
+        if self._closing:
+            return
+        QMessageBox.critical(self, "Ошибка шлюза", text)
+
     def _run_stop_callback(self) -> None:
         callback = self.gateway_service.take_stop_callback()
         if callback is not None:
@@ -2970,6 +3090,54 @@ def _setup_single_instance_server(window: GatewayApp) -> QLocalServer:
     return server
 
 
+class _ErrorDialogHub(QObject):
+    """Show uncaught Python errors in a window instead of closing the program."""
+
+    report = Signal(str, str)
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._open = False
+        self.report.connect(self._show)
+
+    def _show(self, title: str, text: str) -> None:
+        if self._open or QApplication.instance() is None:
+            return
+        self._open = True
+        try:
+            QMessageBox.critical(None, title, (text or "Неизвестная ошибка")[:4000])
+        finally:
+            self._open = False
+
+
+_ERROR_HUB: _ErrorDialogHub | None = None
+
+
+def _install_error_dialogs() -> None:
+    global _ERROR_HUB
+    _ERROR_HUB = _ErrorDialogHub()
+
+    def _excepthook(exc_type, exc, tb) -> None:  # type: ignore[no-untyped-def]
+        text = "".join(traceback.format_exception(exc_type, exc, tb))
+        logging.error("Необработанная ошибка:\n%s", text)
+        if _ERROR_HUB is not None:
+            _ERROR_HUB.report.emit("Ошибка программы", text)
+        else:
+            sys.__excepthook__(exc_type, exc, tb)
+
+    def _thread_hook(args: threading.ExceptHookArgs) -> None:
+        text = "".join(
+            traceback.format_exception(args.exc_type, args.exc_value, args.exc_traceback)
+        )
+        name = args.thread.name if args.thread is not None else "?"
+        logging.error("Ошибка потока %s:\n%s", name, text)
+        if _ERROR_HUB is not None:
+            _ERROR_HUB.report.emit("Ошибка программы", f"Поток {name}:\n\n{text}")
+
+    sys.excepthook = _excepthook
+    threading.excepthook = _thread_hook
+
+
 def main() -> None:
     # Portable PyInstaller build embeds its own Python; skip check when frozen.
     if not getattr(sys, "frozen", False) and sys.version_info < (3, 11):
@@ -2988,6 +3156,7 @@ def main() -> None:
         app.setStyle("Fusion")
         app.setStyleSheet(_app_stylesheet())
         _configure_application(app)
+        _install_error_dialogs()
 
         if _notify_running_instance():
             QMessageBox.information(

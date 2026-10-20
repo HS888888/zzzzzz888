@@ -477,6 +477,16 @@ class OpcUaGateway:
 
         logger.info("Запущено задач опроса: %d", len(self._remote_tasks))
 
+    async def _cancel_remote_tasks(self) -> None:
+        """Cancel polling tasks and wait until they leave the OPC session."""
+        tasks = list(self._remote_tasks)
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        self._remote_tasks.clear()
+
     async def start(self) -> None:
         """Start the gateway: local server and PLC polling."""
         with self._status_lock:
@@ -488,26 +498,26 @@ class OpcUaGateway:
             await self.init_local_server()
             logger.info("Запуск локального OPC UA сервера...")
             async with self.server:
-                await self.read_remote_servers()
-                logger.info("Шлюз работает")
-                await self._stop_event.wait()
+                try:
+                    await self.read_remote_servers()
+                    logger.info("Шлюз работает")
+                    await self._stop_event.wait()
+                finally:
+                    await self._cancel_remote_tasks()
         except Exception as exc:
             with self._status_lock:
                 self._status["gateway_ok"] = False
                 self._status["local_server_ok"] = False
                 self._status["error"] = str(exc)
             raise
+        finally:
+            self._reset_status()
+            logger.info("Шлюз остановлен")
 
     async def stop(self) -> None:
-        """Stop the gateway gracefully."""
+        """Ask the running gateway to release the server and polling tasks."""
         logger.info("Остановка шлюза...")
         self._stop_event.set()
-
-        for task in self._remote_tasks:
-            task.cancel()
-
-        if self._remote_tasks:
-            await asyncio.gather(*self._remote_tasks, return_exceptions=True)
-
-        self._reset_status()
-        logger.info("Шлюз остановлен")
+        for task in list(self._remote_tasks):
+            if not task.done():
+                task.cancel()
