@@ -74,6 +74,21 @@ def setup_logging(level: str = "INFO", log_dir: Path | str | None = None) -> Pat
     return log_path
 
 
+def _is_payload_too_large(exc: BaseException) -> bool:
+    """True when the PLC rejected a read because the message did not fit."""
+    text = str(exc).lower()
+    markers = (
+        "encoding",
+        "too large",
+        "toolarge",
+        "badencodinglimits",
+        "badrequesttoolarge",
+        "badresponse",
+        "maxmessagesize",
+    )
+    return any(marker in text for marker in markers)
+
+
 def _is_connection_error(exc: BaseException) -> bool:
     """True when a read failed because the PLC session itself is gone."""
     text = str(exc).lower()
@@ -121,6 +136,12 @@ INTEGER_VARIANT_TYPES = frozenset(
 )
 
 FLOAT_VARIANT_TYPES = frozenset({ua.VariantType.Float, ua.VariantType.Double})
+
+# OWEN PLCs advertise a 64 KB receive buffer. A batch of 20 scalar reads
+# stays inside that limit and returns before the session watchdog gives up.
+READ_BATCH_SIZE = 20
+READ_REQUEST_TIMEOUT_SEC = 20.0
+READ_WATCHDOG_SEC = 10.0
 
 
 def coerce_value(value: Any, variant_type: ua.VariantType) -> Any:
@@ -170,6 +191,7 @@ class OpcUaGateway:
         self.local_variables: dict[str, Any] = {}
         self.local_variable_types: dict[str, ua.VariantType] = {}
         self._remote_tasks: list[asyncio.Task[None]] = []
+        self._array_tag_warnings: set[str] = set()
         self._stop_event = asyncio.Event()
         self._status_lock = threading.Lock()
         self._status: dict[str, Any] = {
@@ -287,6 +309,99 @@ class OpcUaGateway:
         await variable_node.write_value(coerced)
         logger.debug("Обновлено %s = %r", local_node_id, coerced)
 
+    def _warn_array_tag(self, remote_node_id: str, plc_name: str) -> None:
+        """Log once: a whole array cannot be stored in one numeric gateway tag."""
+        if remote_node_id in self._array_tag_warnings:
+            return
+        self._array_tag_warnings.add(remote_node_id)
+        logger.error(
+            "Тег %s на %s — это массив. Добавьте элемент, например AI[0].Converted_Value, "
+            "а не весь массив целиком",
+            remote_node_id,
+            plc_name,
+        )
+
+    async def _poll_batch(
+        self,
+        client: Client,
+        url: str,
+        name: str,
+        batch: list[dict[str, Any]],
+    ) -> tuple[bool, bool]:
+        """Read one chunk. Returns (any value stored, connection lost)."""
+        remote_ids = [build_node_id(cfg["node_id"]) for cfg in batch]
+        node_objs = [client.get_node(node_id) for node_id in remote_ids]
+        try:
+            data_values = await client.read_attributes(node_objs)
+        except Exception as exc:
+            if len(batch) > 1 and _is_payload_too_large(exc):
+                middle = len(batch) // 2
+                first_ok, first_lost = await self._poll_batch(client, url, name, batch[:middle])
+                if first_lost:
+                    return first_ok, True
+                second_ok, second_lost = await self._poll_batch(
+                    client, url, name, batch[middle:]
+                )
+                return first_ok or second_ok, second_lost
+            if _is_connection_error(exc):
+                logger.error("Ошибка чтения пачки с %s: %s", name, exc)
+                return False, True
+            if len(batch) == 1:
+                logger.error("Ошибка чтения %s с %s: %s", remote_ids[0], name, exc)
+                return False, False
+            any_ok = False
+            for cfg in batch:
+                item_ok, item_lost = await self._poll_batch(client, url, name, [cfg])
+                any_ok = any_ok or item_ok
+                if item_lost:
+                    return any_ok, True
+            return any_ok, False
+
+        any_ok = False
+        for cfg, remote_id, data_value in zip(batch, remote_ids, data_values):
+            status = getattr(data_value, "StatusCode", None)
+            if status is not None and status.is_bad():
+                logger.error("Ошибка чтения %s с %s: %s", remote_id, name, status)
+                if _is_connection_error(Exception(str(status))):
+                    return any_ok, True
+                continue
+            variant = getattr(data_value, "Value", None)
+            value = variant.Value if variant is not None else None
+            if isinstance(value, (list, tuple)):
+                self._warn_array_tag(remote_id, name)
+                continue
+            try:
+                await self._update_local_variable(cfg["local_node_id"], value)
+            except (TypeError, ValueError) as exc:
+                logger.error("Ошибка записи %s с %s: %s", remote_id, name, exc)
+                continue
+            any_ok = True
+            self._set_plc_status(url, connected=True, read_ok=True)
+        return any_ok, False
+
+    async def _poll_nodes(
+        self,
+        client: Client,
+        url: str,
+        name: str,
+        nodes: list[dict[str, Any]],
+    ) -> tuple[bool, bool]:
+        """Read every configured tag in small batches."""
+        any_ok = False
+        for start in range(0, len(nodes), READ_BATCH_SIZE):
+            if self._stop_event.is_set():
+                break
+            batch_ok, connection_lost = await self._poll_batch(
+                client,
+                url,
+                name,
+                nodes[start : start + READ_BATCH_SIZE],
+            )
+            any_ok = any_ok or batch_ok
+            if connection_lost:
+                return any_ok, True
+        return any_ok, False
+
     async def _read_remote_server_loop(self, remote_config: dict[str, Any]) -> None:
         """Poll one remote OPC UA server (PLC)."""
         url = remote_config["url"]
@@ -296,7 +411,11 @@ class OpcUaGateway:
         reconnect_interval = float(self.config.get("reconnect_interval", 5.0))
 
         while not self._stop_event.is_set():
-            client = Client(url=url)
+            client = Client(
+                url=url,
+                timeout=READ_REQUEST_TIMEOUT_SEC,
+                watchdog_intervall=READ_WATCHDOG_SEC,
+            )
             try:
                 logger.info("Подключение к удалённому серверу %s (%s)", name, url)
                 async with client:
@@ -304,28 +423,9 @@ class OpcUaGateway:
                     self._set_plc_status(url, connected=True)
 
                     while not self._stop_event.is_set():
-                        any_ok = False
-                        connection_lost = False
-                        for node_config in nodes:
-                            remote_node_id = build_node_id(node_config["node_id"])
-                            local_node_id = node_config["local_node_id"]
-
-                            try:
-                                node = client.get_node(remote_node_id)
-                                value = await node.read_value()
-                                any_ok = True
-                                self._set_plc_status(url, connected=True, read_ok=True)
-                                await self._update_local_variable(local_node_id, value)
-                            except Exception as exc:
-                                logger.error(
-                                    "Ошибка чтения %s с %s: %s",
-                                    remote_node_id,
-                                    name,
-                                    exc,
-                                )
-                                if _is_connection_error(exc):
-                                    connection_lost = True
-                                    break
+                        any_ok, connection_lost = await self._poll_nodes(
+                            client, url, name, nodes
+                        )
 
                         if connection_lost:
                             raise ConnectionError(f"Соединение с {name} потеряно во время опроса")
