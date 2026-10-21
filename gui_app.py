@@ -600,6 +600,7 @@ class GatewayService(QObject):
     def __init__(self) -> None:
         super().__init__()
         self._gateway: OpcUaGateway | None = None
+        self._persistent_gateway: OpcUaGateway | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._run_future: Future[None] | None = None
         self._logs: deque[str] = deque(maxlen=1000)
@@ -814,7 +815,12 @@ class GatewayService(QObject):
         try:
             if self._user_stop_requested:
                 return
-            gateway = OpcUaGateway(config)
+            gateway = self._persistent_gateway
+            if gateway is None:
+                gateway = OpcUaGateway(config)
+                self._persistent_gateway = gateway
+            else:
+                gateway.config = config
             self._gateway = gateway
             if self._user_stop_requested:
                 return
