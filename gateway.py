@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import faulthandler
+import json
 import logging
+import os
+import signal
 import sys
 import threading
 import time
@@ -198,10 +201,6 @@ class OpcUaGateway:
         self._remote_tasks: list[asyncio.Task[None]] = []
         self._array_tag_warnings: set[str] = set()
         self._stop_event = asyncio.Event()
-        self._gateway_folder: Any = None
-        self._server_ready = False
-        self._listening = False
-        self._server_signature: tuple[str, str, str] | None = None
         self._status_lock = threading.Lock()
         self._status: dict[str, Any] = {
             "running": False,
@@ -295,8 +294,6 @@ class OpcUaGateway:
                 data_type_name,
             )
 
-        self._gateway_folder = gateway_folder
-        self._server_signature = (endpoint, namespace_uri, folder_name)
         logger.info("Локальный OPC UA сервер инициализирован: %s", endpoint)
         with self._status_lock:
             self._status["local_server_ok"] = True
@@ -488,41 +485,6 @@ class OpcUaGateway:
 
         logger.info("Запущено задач опроса: %d", len(self._remote_tasks))
 
-    def _current_server_signature(self) -> tuple[str, str, str]:
-        local_config = self.config["local_server"]
-        return (
-            local_config["url"],
-            local_config["namespace_uri"],
-            local_config.get("folder_name", "GatewayData"),
-        )
-
-    async def _add_missing_variables(self) -> None:
-        """Add tags that appeared in settings after the server was first created."""
-        if self._gateway_folder is None or self.namespace_index is None:
-            return
-        idx = self.namespace_index
-        for variable_config in self.config["local_server"]["variables"]:
-            node_id = variable_config["node_id"]
-            if node_id in self.local_variables:
-                continue
-            browse_name = variable_config.get("name", node_id)
-            variant_type = get_variant_type(variable_config["data_type"])
-            variable_node = await self._gateway_folder.add_variable(
-                ua.NodeId(node_id, idx),
-                ua.QualifiedName(browse_name, idx),
-                variable_config["initial_value"],
-                varianttype=variant_type,
-            )
-            await variable_node.set_writable(False)
-            self.local_variables[node_id] = variable_node
-            self.local_variable_types[node_id] = variant_type
-            logger.info(
-                "Создана локальная переменная %s (%s, %s)",
-                node_id,
-                browse_name,
-                variable_config["data_type"],
-            )
-
     async def _cancel_remote_tasks(self) -> None:
         """Cancel polling tasks and wait until they leave the OPC session."""
         tasks = list(self._remote_tasks)
@@ -534,47 +496,39 @@ class OpcUaGateway:
         self._remote_tasks.clear()
 
     async def start(self) -> None:
-        """Start PLC polling. The local OPC server stays up between Stop and Start."""
-        self._stop_event = asyncio.Event()
+        """Start the local OPC server and PLC polling. Stop tears both down."""
         with self._status_lock:
             self._status["running"] = True
             self._status["gateway_ok"] = True
             self._status["error"] = None
 
+        server_started = False
         try:
-            signature = self._current_server_signature()
-            if self._server_ready and signature != self._server_signature:
-                raise RuntimeError(
-                    "Адрес шлюза или имя папки изменились. "
-                    "Закройте программу и откройте её снова, чтобы применить эти настройки."
-                )
-            if not self._server_ready:
-                await self.init_local_server()
-                self._server_ready = True
-            if not self._listening:
-                logger.info("Запуск локального OPC UA сервера...")
-                await self.server.start()
-                self._listening = True
-            else:
-                await self._add_missing_variables()
-                logger.info("Локальный OPC UA сервер уже работает, запускаю опрос")
-            with self._status_lock:
-                self._status["local_server_ok"] = True
+            await self.init_local_server()
+            logger.info("Запуск локального OPC UA сервера...")
+            await self.server.start()
+            server_started = True
             try:
                 await self.read_remote_servers()
                 logger.info("Шлюз работает")
                 await self._stop_event.wait()
             finally:
                 await self._cancel_remote_tasks()
+                if server_started:
+                    logger.info("Остановка локального OPC UA сервера...")
+                    try:
+                        await self.server.stop()
+                    except Exception:
+                        logger.exception("Не удалось остановить локальный OPC UA сервер")
         except Exception as exc:
             with self._status_lock:
                 self._status["gateway_ok"] = False
-                self._status["local_server_ok"] = self._server_ready
+                self._status["local_server_ok"] = False
                 self._status["error"] = str(exc)
             raise
         finally:
             self._reset_status()
-            logger.info("Опрос остановлен")
+            logger.info("Шлюз остановлен")
 
     async def stop(self) -> None:
         """Ask the running gateway to release the server and polling tasks."""
@@ -583,3 +537,116 @@ class OpcUaGateway:
         for task in list(self._remote_tasks):
             if not task.done():
                 task.cancel()
+
+
+def _ensure_stdio() -> None:
+    """A windowed build has no console. The parent still pipes stdin and stdout."""
+    import io
+
+    if sys.stdin is None:
+        sys.stdin = io.TextIOWrapper(
+            open(0, "rb", buffering=0),
+            encoding="utf-8",
+            errors="replace",
+        )
+    if sys.stdout is None:
+        sys.stdout = io.TextIOWrapper(
+            open(1, "wb", buffering=0),
+            encoding="utf-8",
+            errors="replace",
+            line_buffering=True,
+        )
+
+
+def _write_status(path: Path, status: dict[str, Any]) -> None:
+    target = Path(path)
+    temporary = target.with_suffix(target.suffix + ".tmp")
+    temporary.write_text(
+        json.dumps(status, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    os.replace(temporary, target)
+
+
+def _idle_status() -> dict[str, Any]:
+    return {
+        "running": False,
+        "gateway_ok": False,
+        "local_server_ok": False,
+        "error": None,
+        "plcs": {},
+    }
+
+
+async def _serve_once(config: dict[str, Any], status_path: Path) -> None:
+    """Run one gateway lifetime. A new process is used for the next Start."""
+    gateway = OpcUaGateway(config)
+    loop = asyncio.get_running_loop()
+
+    def _ask_stop() -> None:
+        asyncio.create_task(gateway.stop())
+
+    def _stdin_stop() -> None:
+        try:
+            for line in sys.stdin:
+                if line.strip() == "stop":
+                    loop.call_soon_threadsafe(_ask_stop)
+                    return
+        except Exception:
+            logger.exception("Не удалось прочитать команду остановки")
+
+    threading.Thread(target=_stdin_stop, name="gateway-stop-pipe", daemon=True).start()
+    if sys.platform != "win32":
+        try:
+            loop.add_signal_handler(signal.SIGTERM, _ask_stop)
+        except NotImplementedError:
+            pass
+
+    async def _publish_status() -> None:
+        while True:
+            try:
+                _write_status(status_path, gateway.get_status())
+            except Exception:
+                logger.exception("Не удалось записать состояние шлюза")
+            await asyncio.sleep(0.5)
+
+    status_task = asyncio.create_task(_publish_status())
+    try:
+        await gateway.start()
+    finally:
+        status_task.cancel()
+        try:
+            await status_task
+        except asyncio.CancelledError:
+            pass
+        try:
+            _write_status(status_path, _idle_status())
+        except Exception:
+            logger.exception("Не удалось сбросить состояние шлюза")
+
+
+def run_gateway_process(config_path: str, status_path: str, log_dir: str) -> None:
+    """Entry point for the child process that owns the OPC server."""
+    _ensure_stdio()
+    setup_logging("INFO", log_dir)
+    root = logging.getLogger()
+    for handler in list(root.handlers):
+        if isinstance(handler, logging.StreamHandler) and not isinstance(
+            handler, logging.FileHandler
+        ):
+            root.removeHandler(handler)
+    mirror = logging.StreamHandler(sys.stdout)
+    mirror.setFormatter(
+        logging.Formatter(
+            "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+    )
+    root.addHandler(mirror)
+
+    config = json.loads(Path(config_path).read_text(encoding="utf-8"))
+    try:
+        asyncio.run(_serve_once(config, Path(status_path)))
+    except Exception:
+        logger.exception("Процесс шлюза завершился с ошибкой")
+        raise

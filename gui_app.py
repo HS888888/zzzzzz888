@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
+import os
 import re
 import socket
+import subprocess
 import sys
+import tempfile
 import threading
 import time
 import traceback
-from concurrent.futures import Future, TimeoutError as FutureTimeout
 from collections import deque
 from pathlib import Path
 from typing import Any, Callable
@@ -61,7 +62,7 @@ from config_manager import (
     parse_local_port,
     save_config,
 )
-from gateway import OpcUaGateway, setup_logging
+from gateway import setup_logging
 from opcua_browse import (
     OpcUaBrowserSession,
     resolve_tag_list_entries_async,
@@ -587,10 +588,10 @@ class LogBufferHandler(logging.Handler):
 
 
 class GatewayService(QObject):
-    """Run OpcUaGateway on one long-lived asyncio loop.
+    """Run the OPC server in a child process.
 
-    The loop stays open between Stop and Start. Closing it and opening
-    another one drops the OPC port late and can kill the process.
+    A second Server() inside this process crashes it. Stop ends the child,
+    Start launches a new one, so tags and addresses can change freely.
     """
 
     thread_exited = Signal(bool)
@@ -599,27 +600,17 @@ class GatewayService(QObject):
 
     def __init__(self) -> None:
         super().__init__()
-        self._gateway: OpcUaGateway | None = None
-        self._persistent_gateway: OpcUaGateway | None = None
-        self._loop: asyncio.AbstractEventLoop | None = None
-        self._run_future: Future[None] | None = None
         self._logs: deque[str] = deque(maxlen=1000)
-        self._log_handler: LogBufferHandler | None = None
         self._running = False
         self._stopping = False
         self._user_stop_requested = False
         self._start_failed = False
+        self._exit_reported = False
         self._stop_done_callback: Callable[[], None] | None = None
         self._lock = threading.Lock()
-        self._loop_ready = threading.Event()
-        self._loop_thread = threading.Thread(
-            target=self._loop_main,
-            name="opcua-loop",
-            daemon=True,
-        )
-        self._loop_thread.start()
-        if not self._loop_ready.wait(timeout=10):
-            raise RuntimeError("Не удалось запустить цикл шлюза")
+        self._process: subprocess.Popen[str] | None = None
+        self._status_path: Path | None = None
+        self._config_path: Path | None = None
 
     def take_stop_callback(self) -> Callable[[], None] | None:
         with self._lock:
@@ -650,17 +641,42 @@ class GatewayService(QObject):
         with self._lock:
             if self._running or self._stopping:
                 raise RuntimeError("Шлюз уже запущен или останавливается")
-            loop = self._loop
-            if loop is None or loop.is_closed():
-                raise RuntimeError("Цикл шлюза недоступен")
             self._user_stop_requested = False
             self._start_failed = False
+            self._exit_reported = False
             self._running = True
-            future = asyncio.run_coroutine_threadsafe(
-                self._run_gateway(config),
-                loop,
-            )
-            self._run_future = future
+        log_dir = _gateway_log_dir()
+        log_dir.mkdir(parents=True, exist_ok=True)
+        config_path = _temp_json("gateway-config-", log_dir)
+        status_path = _temp_json("gateway-status-", log_dir)
+        config_path.write_text(json.dumps(config, ensure_ascii=False), encoding="utf-8")
+        status_path.write_text(json.dumps(_idle_gateway_status()), encoding="utf-8")
+        self._config_path = config_path
+        self._status_path = status_path
+        command = _gateway_worker_command(config_path, status_path, log_dir)
+        popen_kwargs: dict[str, Any] = {
+            "stdin": subprocess.PIPE,
+            "stdout": subprocess.PIPE,
+            "stderr": subprocess.STDOUT,
+            "text": True,
+            "encoding": "utf-8",
+            "errors": "replace",
+            "bufsize": 1,
+        }
+        if sys.platform == "win32":
+            popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+        try:
+            self._process = subprocess.Popen(command, **popen_kwargs)
+        except Exception:
+            self._running = False
+            self._cleanup_runtime_files()
+            raise
+        self._logs.append("[GUI] Запуск шлюза...")
+        threading.Thread(
+            target=self._read_worker_output,
+            name="opcua-gateway-log",
+            daemon=True,
+        ).start()
 
     def stop(self, done_callback: Callable[[], None] | None = None) -> None:
         """Request gateway stop without blocking the caller."""
@@ -674,100 +690,50 @@ class GatewayService(QObject):
                 self._stopping = True
                 self._stop_done_callback = done_callback
                 pending = None
-                loop = self._loop
-                run_future = self._run_future
+                process = self._process
         if pending is not None:
             pending()
             return
 
-        stop_released = False
-        handed_off = False
-
         def _finish_stop() -> None:
-            nonlocal stop_released
             with self._lock:
-                if stop_released:
-                    return
-                stop_released = True
                 self._stopping = False
                 self._running = False
-                self._gateway = None
+            self._cleanup_runtime_files()
             try:
                 self.stop_finished.emit()
             except RuntimeError:
                 pass
 
         def _stop_worker() -> None:
-            nonlocal handed_off
             try:
                 self._logs.append("[GUI] Остановка шлюза...")
-                deadline = time.monotonic() + 45
-                gateway: OpcUaGateway | None = None
-                while time.monotonic() < deadline:
-                    gateway = self._gateway
-                    if gateway is not None or (run_future is not None and run_future.done()):
-                        break
-                    time.sleep(0.05)
-                if (
-                    loop is not None
-                    and gateway is not None
-                    and not loop.is_closed()
-                ):
-                    try:
-                        stop_future = asyncio.run_coroutine_threadsafe(
-                            gateway.stop(),
-                            loop,
-                        )
-                        stop_future.result(timeout=30)
-                    except Exception as exc:
-                        self._logs.append(f"[GUI] Ошибка остановки: {exc}")
-                        self.error_occurred.emit(f"Не удалось остановить шлюз:\n\n{exc}")
-                if run_future is not None:
-                    remaining = max(1.0, deadline - time.monotonic())
-                    try:
-                        run_future.result(timeout=remaining)
-                    except FutureTimeout:
-                        self._logs.append(
-                            "[GUI] Шлюз ещё останавливается, запуск будет недоступен"
-                        )
-                        self.error_occurred.emit(
-                            "Шлюз ещё останавливается. "
-                            "Кнопка «Запуск» включится, когда порт освободится."
-                        )
-                        _hand_off_wait()
-                        return
-                    except Exception as exc:
-                        self._logs.append(f"[GUI] Ошибка завершения шлюза: {exc}")
-                        self.error_occurred.emit(f"Шлюз остановился с ошибкой:\n\n{exc}")
-            finally:
-                if not handed_off:
-                    if run_future is None or run_future.done():
-                        _finish_stop()
-                    else:
-                        self._logs.append(
-                            "[GUI] Остановка не завершилась, ждём освобождения порта"
-                        )
-                        _hand_off_wait()
-
-        def _hand_off_wait() -> None:
-            nonlocal handed_off
-            if handed_off or run_future is None:
-                return
-            handed_off = True
-
-            def _wait_release() -> None:
+                if process is None:
+                    return
                 try:
-                    run_future.result()
+                    if process.stdin is not None:
+                        process.stdin.write("stop\n")
+                        process.stdin.flush()
+                    process.wait(timeout=25)
+                except subprocess.TimeoutExpired:
+                    self._logs.append("[GUI] Сервер не остановился, завершаю процесс")
+                    process.terminate()
+                    try:
+                        process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait(timeout=5)
                 except Exception as exc:
-                    self._logs.append(f"[GUI] Ошибка завершения шлюза: {exc}")
-                finally:
-                    _finish_stop()
-
-            threading.Thread(
-                target=_wait_release,
-                name="opcua-gateway-stop-wait",
-                daemon=True,
-            ).start()
+                    self._logs.append(f"[GUI] Ошибка остановки: {exc}")
+                    self.error_occurred.emit(f"Не удалось остановить шлюз:\n\n{exc}")
+                    try:
+                        process.kill()
+                    except Exception:
+                        pass
+            finally:
+                code = process.poll() if process is not None else 0
+                self._report_exit(code)
+                _finish_stop()
 
         threading.Thread(
             target=_stop_worker,
@@ -777,79 +743,111 @@ class GatewayService(QObject):
 
     def get_status(self) -> dict[str, Any]:
         """Return gateway runtime status for diagram coloring (non-blocking)."""
-        gateway = self._gateway
-        running = self._running
-        if gateway is not None and running:
+        path = self._status_path
+        if self._running and path is not None and path.exists():
             try:
-                return gateway.get_status()
+                data = json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(data, dict):
+                    data["running"] = True
+                    return data
             except Exception:
                 pass
-        return {
-            "running": running,
-            "gateway_ok": False,
-            "local_server_ok": False,
-            "error": None,
-            "plcs": {},
-        }
+        status = _idle_gateway_status()
+        status["running"] = self._running
+        return status
 
-    def _loop_main(self) -> None:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        self._loop = loop
-        self._loop_ready.set()
+    def _read_worker_output(self) -> None:
+        process = self._process
+        if process is None or process.stdout is None:
+            return
         try:
-            loop.run_forever()
-        finally:
-            try:
-                if not loop.is_closed():
-                    loop.close()
-            except Exception:
-                logger.exception("Не удалось закрыть цикл шлюза")
-
-    async def _run_gateway(self, config: dict[str, Any]) -> None:
-        log_handler = LogBufferHandler(self._logs)
-        self._log_handler = log_handler
-        logging.getLogger().addHandler(log_handler)
-        self._logs.append("[GUI] Запуск шлюза...")
-        unexpected = False
-        try:
-            if self._user_stop_requested:
-                return
-            gateway = self._persistent_gateway
-            if gateway is None:
-                gateway = OpcUaGateway(config)
-                self._persistent_gateway = gateway
-            else:
-                gateway.config = config
-            self._gateway = gateway
-            if self._user_stop_requested:
-                return
-            await gateway.start()
+            for line in process.stdout:
+                text = line.rstrip()
+                if text:
+                    self._logs.append(text)
         except Exception as exc:
-            logger.exception("Ошибка шлюза")
-            self._logs.append(f"[GUI] Ошибка шлюза: {exc}")
-            with self._lock:
+            self._logs.append(f"[GUI] Журнал шлюза оборвался: {exc}")
+        code = process.wait()
+        self._report_exit(code)
+
+    def _report_exit(self, code: int | None) -> None:
+        with self._lock:
+            if self._exit_reported:
+                return
+            self._exit_reported = True
+            user_stop = self._user_stop_requested
+            failed = not user_stop and code not in (0, None)
+            if failed:
                 self._start_failed = True
-            message = str(exc).strip() or exc.__class__.__name__
+            self._running = False
+        if failed:
+            message = f"Сервер шлюза завершился с кодом {code}."
+            self._logs.append(f"[GUI] {message}")
             try:
                 self.error_occurred.emit(message)
             except RuntimeError:
                 pass
-        finally:
-            self._logs.append("[GUI] Шлюз остановлен")
-            with self._lock:
-                unexpected = not self._user_stop_requested and not self._start_failed
-                self._running = False
-                self._gateway = None
-                self._run_future = None
-            root_logger = logging.getLogger()
-            if self._log_handler is not None:
-                root_logger.removeHandler(self._log_handler)
-                self._log_handler = None
+        try:
+            self.thread_exited.emit(not user_stop and not failed)
+        except RuntimeError:
+            pass
+
+    def _cleanup_runtime_files(self) -> None:
+        for path in (self._config_path, self._status_path):
+            if path is None:
+                continue
             try:
-                self.thread_exited.emit(unexpected)
-            except RuntimeError:
+                path.unlink(missing_ok=True)
+            except OSError:
                 pass
+        self._config_path = None
+        self._status_path = None
+
+
+def _temp_json(prefix: str, directory: Path) -> Path:
+    handle = tempfile.NamedTemporaryFile(
+        prefix=prefix,
+        suffix=".json",
+        dir=directory,
+        delete=False,
+        mode="w",
+        encoding="utf-8",
+    )
+    try:
+        handle.write("{}\n")
+    finally:
+        handle.close()
+    return Path(handle.name)
+
+
+def _idle_gateway_status() -> dict[str, Any]:
+    return {
+        "running": False,
+        "gateway_ok": False,
+        "local_server_ok": False,
+        "error": None,
+        "plcs": {},
+    }
+
+
+def _gateway_log_dir() -> Path:
+    for handler in logging.getLogger().handlers:
+        base = getattr(handler, "baseFilename", None)
+        if base:
+            return Path(base).parent
+    return Path.cwd() / "logs"
+
+
+def _gateway_worker_command(config_path: Path, status_path: Path, log_dir: Path) -> list[str]:
+    args = [
+        "--gateway-worker",
+        str(config_path),
+        str(status_path),
+        str(log_dir),
+    ]
+    if getattr(sys, "frozen", False):
+        return [sys.executable, *args]
+    return [sys.executable, str(Path(sys.argv[0]).resolve()), *args]
 
 
 def _app_stylesheet() -> str:
@@ -3145,6 +3143,14 @@ def _install_error_dialogs() -> None:
 
 
 def main() -> None:
+    if len(sys.argv) > 1 and sys.argv[1] == "--gateway-worker":
+        from gateway import run_gateway_process
+
+        if len(sys.argv) != 5:
+            raise SystemExit(2)
+        run_gateway_process(sys.argv[2], sys.argv[3], sys.argv[4])
+        return
+
     # Portable PyInstaller build embeds its own Python; skip check when frozen.
     if not getattr(sys, "frozen", False) and sys.version_info < (3, 11):
         app = QApplication(sys.argv)

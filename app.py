@@ -21,9 +21,19 @@ def _hide_windows_console() -> None:
         pass
 
 
-_hide_windows_console()
+def _run_worker() -> None:
+    from gateway import run_gateway_process
 
-from gui_app import main
+    if len(sys.argv) != 5:
+        raise SystemExit(2)
+    run_gateway_process(sys.argv[2], sys.argv[3], sys.argv[4])
+
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) > 1 and sys.argv[1] == "--gateway-worker":
+        _run_worker()
+    else:
+        _hide_windows_console()
+        from gui_app import main
+
+        main()
